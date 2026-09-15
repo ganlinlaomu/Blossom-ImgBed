@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Blossom Upload · Blossom ImgBed</title>
+  <link rel="icon" href="/static/media/logo.png">
+  <link rel="stylesheet" href="/css/blossom-web-upload.css">
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <p class="eyebrow">Blossom ImgBed</p>
+        <h1>Blossom Upload</h1>
+        <p>Sign in with a NIP-07 browser signer. Files use the standard Blossom BUD-11 upload endpoint.</p>
+      </div>
+      <a class="secondary" href="/">Back to ImgBed</a>
+    </header>
+
+    <section class="card" id="logged-out">
+      <h2>Nostr login</h2>
+      <p>Login proves control of your public key. The key must already be present in the administrator allowlist.</p>
+      <button id="login" type="button">Login with Nostr</button>
+      <p id="signer-warning" class="warning" hidden>No NIP-07 compatible signer detected.</p>
+    </section>
+
+    <section class="card" id="logged-in" hidden>
+      <div class="identity-row">
+        <div>
+          <span class="label">Logged in as</span>
+          <code id="npub"></code>
+          <small id="hex"></small>
+        </div>
+        <button id="logout" class="secondary" type="button">Logout</button>
+      </div>
+      <hr>
+      <form id="upload-form">
+        <label class="file-picker" for="file">Select file</label>
+        <input id="file" name="file" type="file" required>
+        <div id="file-name">No file selected</div>
+        <button id="upload" type="submit">Upload with BUD-11</button>
+      </form>
+      <div id="result" hidden></div>
+    </section>
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+  </main>
+  <script type="module" src="/js/blossom-web-upload.js"></script>
+</body>
+</html>

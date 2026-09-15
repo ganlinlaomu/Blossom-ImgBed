@@ -45,6 +45,48 @@ DELETE /api/manage/blossom/pubkeys/<pubkey>
 
 For D1 deployments, also apply [`database/migrations/v2.9.0_add_blossom_allowlist.sql`](database/migrations/v2.9.0_add_blossom_allowlist.sql). Docker/SQLite applies it automatically. KV deployments use isolated `manage@blossom@allowed-pubkey@...` keys.
 
+## NIP-07 Web Login
+
+The lightweight Blossom upload page is available at `/blossom-upload.html` and requires a NIP-07-compatible browser signer. Login proves control of a Nostr public key by signing a short-lived, domain-bound challenge; the verified pubkey must still exist in the administrator allowlist.
+
+Private keys are never entered into or sent to Blossom ImgBed. Signing stays inside the user's NIP-07 extension. The resulting Web session is stored as a random server-side session token in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie and expires after 24 hours. `/api/blossom/auth/me` checks the allowlist again, so removing a pubkey immediately invalidates its Web access.
+
+Authentication endpoints:
+
+```text
+GET  /api/blossom/auth/challenge
+POST /api/blossom/auth/login
+GET  /api/blossom/auth/me
+POST /api/blossom/auth/logout
+```
+
+Login challenges expire after five minutes by default. `BLOSSOM_LOGIN_CHALLENGE_TTL_SECONDS` may be set from 60 through 600 seconds. Each challenge is deleted after one valid signed use to prevent replay.
+
+Web uploads do not use an internal or session-only upload API. The browser hashes the selected file with Web Crypto, asks the NIP-07 signer to sign the standard kind `24242` BUD-11 upload event, and sends the file to the same `PUT /upload` endpoint used by external Blossom clients. The server independently verifies BUD-11, the allowlist, and the uploaded bytes before invoking the existing ImgBed storage pipeline.
+
+```text
+Browser
+   │
+   │ NIP-07
+   ▼
+Nostr Signature
+   │
+   ▼
+Allowlist Check
+   │
+   ▼
+Web Session
+   │
+   ▼
+BUD-11 Upload
+   │
+   ▼
+PUT /upload
+   │
+   ▼
+Existing ImgBed Storage
+```
+
 The authorization value below is a placeholder for a Base64url-encoded, signed kind `24242` event. Never send an `nsec` or any other private key to the server.
 
 ```bash
