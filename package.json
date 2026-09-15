@@ -7,6 +7,9 @@
     "deploy/profiles/*"
   ],
   "scripts": {
+    "build": "node deploy/worker/generate-routes.js",
+    "db:init:cloudflare": "npx wrangler d1 execute img_d1 --remote --file=database/init.sql",
+    "deploy": "npm run build && npm run db:init:cloudflare && npx wrangler deploy",
     "ci-test": "concurrently --kill-others \"npm start\" \"wait-on http://localhost:8080 && mocha\"",
     "ci-test:docker": "concurrently --kill-others \"npm run start:docker\" \"wait-on http://localhost:8080 && mocha\"",
     "test": "node --import ./deploy/server/register.mjs ./node_modules/mocha/bin/mocha \"test/**/*.test.js\"",
@@ -16,6 +19,22 @@
   },
   "overrides": {
     "fast-xml-parser": "^5.3.6"
+  },
+  "cloudflare": {
+    "bindings": {
+      "BASIC_USER": {
+        "description": "Administrator username for the ImgBed management console."
+      },
+      "BASIC_PASS": {
+        "description": "Set a strong administrator password. It is stored as a Worker secret and must not be committed."
+      },
+      "img_d1": {
+        "description": "D1 stores ImgBed metadata, Blossom ownership, the pubkey allowlist, login challenges, and sessions."
+      },
+      "img_r2": {
+        "description": "R2 is the default provisioned object-storage backend. Other existing ImgBed storage providers can be configured after deployment."
+      }
+    }
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

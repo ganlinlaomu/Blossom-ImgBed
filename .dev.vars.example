@@ -1,0 +1,4 @@
+# Cloudflare Deploy will prompt for these values and store them as Worker secrets.
+# Never commit a real password in this file.
+BASIC_USER=
+BASIC_PASS=
