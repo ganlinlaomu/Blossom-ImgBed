@@ -4,9 +4,35 @@
 
 **Status: Early development**
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ganlinlaomu/Blossom-ImgBed)
+
 Blossom ImgBed is an independent project based on CloudFlare-ImgBed, designed to add Blossom protocol support, Nostr public-key authentication, and public multi-storage media hosting.
 
 The initial Blossom core is implemented as an additive protocol layer. It reuses CloudFlare-ImgBed's existing storage, channel, upload, read/proxy, and deletion infrastructure instead of reimplementing storage providers.
+
+## Deploy to Cloudflare
+
+Click the button above to open Cloudflare's guided deployment page. Cloudflare clones this public repository into your GitHub or GitLab account, lets you choose the repository, Worker, D1, and R2 names, automatically provisions the resources, initializes the database, builds the Worker, and deploys the frontend and APIs.
+
+The setup page asks for these Worker secrets:
+
+* `BASIC_USER`: administrator username
+* `BASIC_PASS`: a strong administrator password
+
+The deployment template enables Blossom and provisions:
+
+* D1 binding `img_d1` for ImgBed metadata, Blossom ownership, allowlist, challenges, and sessions
+* R2 binding `img_r2` for object storage
+* the existing Cloudflare Images binding and static frontend assets
+
+After deployment:
+
+1. Open the generated `workers.dev` URL and sign in to the ImgBed administrator console.
+2. Open `/blossom-access.html` and add the Nostr pubkeys allowed to write.
+3. Open `/blossom-upload.html` with a NIP-07 signer, or use any standard Blossom client.
+4. Configure another existing ImgBed storage provider in the administrator console only if you do not want to use the provisioned R2 backend.
+
+The one-click flow uses the root [`wrangler.jsonc`](wrangler.jsonc). `npm run deploy` regenerates the Worker routes, runs the idempotent [`database/init.sql`](database/init.sql) against the provisioned D1 binding, and deploys the Worker. No Cloudflare API token is stored in this repository.
 
 ## Blossom Support
 
