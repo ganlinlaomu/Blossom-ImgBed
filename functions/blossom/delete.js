@@ -5,6 +5,8 @@ import {
     addOwnership, countOwnerships, deleteBlob, getBlob, hasOwnership, removeOwnership,
 } from './metadata.js';
 import { deleteViaImgBed } from './imgbed.js';
+import { isPubkeyAllowed } from './allowlist.js';
+import { jsonResponse } from './errors.js';
 
 export function createDeleteHandler(dependencies = {}) {
     const deps = {
@@ -16,6 +18,7 @@ export function createDeleteHandler(dependencies = {}) {
         addOwnership,
         deleteBlob,
         deleteViaImgBed,
+        isPubkeyAllowed,
         ...dependencies,
     };
 
@@ -26,6 +29,9 @@ export function createDeleteHandler(dependencies = {}) {
             const { pubkey } = deps.authenticate(context.request, context.env, {
                 action: 'delete', sha256, requireHash: true,
             });
+            if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
+                return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+            }
             const blob = await deps.getBlob(context.env, sha256);
             if (!blob) throw new BlossomError(404, 'Blob not found');
             if (!await deps.hasOwnership(context.env, sha256, pubkey)) {

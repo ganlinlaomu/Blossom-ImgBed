@@ -3,6 +3,7 @@ import { BlossomError, errorResponse, jsonResponse } from './errors.js';
 import { assertSha256, readAndHashRequest } from './hash.js';
 import { addOwnership, deleteBlob, getBlob, putBlob } from './metadata.js';
 import { getImgBedRecord, uploadViaImgBed } from './imgbed.js';
+import { isPubkeyAllowed } from './allowlist.js';
 
 const MIME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*;.*)?$/;
 
@@ -44,6 +45,7 @@ export function createUploadHandler(dependencies = {}) {
         addOwnership,
         getImgBedRecord,
         uploadViaImgBed,
+        isPubkeyAllowed,
         ...dependencies,
     };
 
@@ -58,6 +60,9 @@ export function createUploadHandler(dependencies = {}) {
             const { pubkey } = deps.authenticate(context.request, context.env, {
                 action: 'upload', sha256: authorizedHash, requireHash: true,
             });
+            if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
+                return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+            }
 
             const declaredLength = context.request.headers.get('Content-Length');
             if (declaredLength !== null && (!/^\d+$/.test(declaredLength) || !Number.isSafeInteger(Number(declaredLength)))) {
