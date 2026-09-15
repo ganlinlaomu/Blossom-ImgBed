@@ -1,0 +1,101 @@
+import { authenticateBud11, isBlossomEnabled } from './auth.js';
+import { BlossomError, errorResponse, jsonResponse } from './errors.js';
+import { assertSha256, readAndHashRequest } from './hash.js';
+import { addOwnership, deleteBlob, getBlob, putBlob } from './metadata.js';
+import { getImgBedRecord, uploadViaImgBed } from './imgbed.js';
+
+const MIME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*;.*)?$/;
+
+function normalizeMimeType(value) {
+    if (!value) return 'application/octet-stream';
+    if (value.length > 255 || /[\r\n\0]/.test(value) || !MIME_PATTERN.test(value)) {
+        throw new BlossomError(415, 'Invalid Content-Type');
+    }
+    return value.split(';', 1)[0].trim().toLowerCase();
+}
+
+function extensionForType(type) {
+    const known = {
+        'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+        'video/mp4': 'mp4', 'audio/mpeg': 'mp3', 'application/pdf': 'pdf',
+        'text/plain': 'txt', 'application/json': 'json', 'application/octet-stream': 'bin',
+    };
+    return known[type] || type.split('/')[1].replace(/[^a-z0-9]/g, '').slice(0, 16) || 'bin';
+}
+
+export function blobDescriptor(request, blob) {
+    const extension = extensionForType(blob.type);
+    return {
+        url: new URL(`/${blob.sha256}.${extension}`, request.url).toString(),
+        sha256: blob.sha256,
+        size: blob.size,
+        type: blob.type,
+        uploaded: blob.uploaded,
+    };
+}
+
+export function createUploadHandler(dependencies = {}) {
+    const deps = {
+        authenticate: authenticateBud11,
+        readAndHash: readAndHashRequest,
+        getBlob,
+        putBlob,
+        deleteBlob,
+        addOwnership,
+        getImgBedRecord,
+        uploadViaImgBed,
+        ...dependencies,
+    };
+
+    return async function handleUpload(context, processFileUpload) {
+        try {
+            if (!isBlossomEnabled(context.env)) throw new BlossomError(404, 'Blossom support is disabled');
+
+            const authorizedHash = assertSha256(
+                context.request.headers.get('X-SHA-256'),
+                'PUT /upload requires a lowercase X-SHA-256 header'
+            );
+            const { pubkey } = deps.authenticate(context.request, context.env, {
+                action: 'upload', sha256: authorizedHash, requireHash: true,
+            });
+
+            const declaredLength = context.request.headers.get('Content-Length');
+            if (declaredLength !== null && (!/^\d+$/.test(declaredLength) || !Number.isSafeInteger(Number(declaredLength)))) {
+                throw new BlossomError(400, 'Invalid Content-Length');
+            }
+
+            const type = normalizeMimeType(context.request.headers.get('Content-Type'));
+            const body = await deps.readAndHash(context.request);
+            if (body.sha256 !== authorizedHash) {
+                throw new BlossomError(409, 'X-SHA-256 and BUD-11 hash do not match the uploaded blob');
+            }
+            if (declaredLength !== null && Number(declaredLength) !== body.size) {
+                throw new BlossomError(400, 'Content-Length does not match the uploaded blob');
+            }
+
+            let blob = await deps.getBlob(context.env, body.sha256);
+            if (blob && await deps.getImgBedRecord(context.env, blob.imgbedId)) {
+                await deps.addOwnership(context.env, blob.sha256, pubkey, Math.floor(Date.now() / 1000));
+                return jsonResponse(blobDescriptor(context.request, blob), 200);
+            }
+            if (blob) await deps.deleteBlob(context.env, blob.sha256);
+
+            const file = new File([body.buffer], `${body.sha256}.${extensionForType(type)}`, { type });
+            const imgbedId = await deps.uploadViaImgBed(context, file, body.sha256, processFileUpload);
+            blob = {
+                sha256: body.sha256,
+                imgbedId,
+                size: body.size,
+                type,
+                uploaded: Math.floor(Date.now() / 1000),
+            };
+            await deps.putBlob(context.env, blob);
+            await deps.addOwnership(context.env, blob.sha256, pubkey, blob.uploaded);
+            return jsonResponse(blobDescriptor(context.request, blob), 201);
+        } catch (error) {
+            return errorResponse(error);
+        }
+    };
+}
+
+export const handleBlossomUpload = createUploadHandler();

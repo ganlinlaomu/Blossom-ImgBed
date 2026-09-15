@@ -53,6 +53,7 @@ import * as apiFetchRes from '../../functions/api/fetchRes.js';
 import * as apiUserConfig from '../../functions/api/userConfig.js';
 import * as random_index from '../../functions/random/index.js';
 import * as upload_index from '../../functions/upload/index.js';
+import * as sha256 from '../../functions/[sha256].js';
 import * as apiManageBlockCatchAll from '../../functions/api/manage/block/[[path]].js';
 import * as apiManageDeleteCatchAll from '../../functions/api/manage/delete/[[path]].js';
 import * as apiManageMetadataCatchAll from '../../functions/api/manage/metadata/[[path]].js';
@@ -104,6 +105,7 @@ const routes = [
     { path: '/api/userConfig', module: apiUserConfig, middlewares: [mw_api] },
     { path: '/random', module: random_index, middlewares: [mw_random] },
     { path: '/upload', module: upload_index, middlewares: [mw_upload] },
+    { path: '/:sha256', module: sha256, middlewares: [], dynamic: true },
     { path: '/api/manage/block/', module: apiManageBlockCatchAll, middlewares: [mw_api, mw_api_manage], catchAll: true },
     { path: '/api/manage/delete/', module: apiManageDeleteCatchAll, middlewares: [mw_api, mw_api_manage], catchAll: true },
     { path: '/api/manage/metadata/', module: apiManageMetadataCatchAll, middlewares: [mw_api, mw_api_manage], catchAll: true },
@@ -126,6 +128,18 @@ function matchRoute(pathname) {
                 const pathParam = rest.split('/').filter(Boolean);
                 return { route, params: { path: pathParam } };
             }
+        } else if (route.dynamic) {
+            const routeParts = route.path.split('/').filter(Boolean);
+            const pathParts = pathname.split('/').filter(Boolean);
+            if (routeParts.length !== pathParts.length) continue;
+            const params = {};
+            let matches = true;
+            for (let index = 0; index < routeParts.length; index++) {
+                const routePart = routeParts[index];
+                if (routePart.startsWith(':')) params[routePart.slice(1)] = pathParts[index];
+                else if (routePart !== pathParts[index]) matches = false;
+            }
+            if (matches) return { route, params };
         } else {
             if (pathname === route.path || pathname === route.path + '/') {
                 return { route, params: {} };

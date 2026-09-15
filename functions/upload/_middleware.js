@@ -3,8 +3,8 @@ import { errorHandling, telemetryData, checkDatabaseConfig } from '../utils/midd
 // CORS 跨域响应头
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Content-Length, Authorization, X-SHA-256',
     'Access-Control-Max-Age': '86400',
 };
 

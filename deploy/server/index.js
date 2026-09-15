@@ -150,7 +150,25 @@ function findFunctionFile(pathname) {
         }
     }
 
-    // 3. 尝试 [[path]].js 通配符匹配（从深到浅）
+    // 3. Try single-segment Pages Functions dynamic routes such as [sha256].js.
+    if (parts.length > 0) {
+        const parentParts = parts.slice(0, -1);
+        const parentDir = join(FUNCTIONS_DIR, ...parentParts);
+        if (existsSync(parentDir) && statSync(parentDir).isDirectory()) {
+            const dynamicFile = readdirSync(parentDir)
+                .filter(name => /^\[[^\[\]]+\]\.js$/.test(name))
+                .sort()[0];
+            if (dynamicFile) {
+                const paramName = dynamicFile.slice(1, -4);
+                return {
+                    file: join(parentDir, dynamicFile),
+                    params: { [paramName]: parts[parts.length - 1] },
+                };
+            }
+        }
+    }
+
+    // 4. 尝试 [[path]].js 通配符匹配（从深到浅）
     for (let i = parts.length; i >= 0; i--) {
         const dirParts = parts.slice(0, i);
         const dirPath = join(FUNCTIONS_DIR, ...dirParts);
@@ -328,9 +346,10 @@ const app = new Hono();
 
 // 判断是否是 function 路径
 const FUNCTION_PREFIXES = ['/api/', '/upload', '/file/', '/dav/', '/random'];
+const BLOSSOM_BLOB_PATH = /^\/[0-9a-f]{64}(?:\.[A-Za-z0-9]{1,16})?$/;
 
 function isFunctionPath(pathname) {
-    return FUNCTION_PREFIXES.some(prefix => pathname.startsWith(prefix));
+    return FUNCTION_PREFIXES.some(prefix => pathname.startsWith(prefix)) || BLOSSOM_BLOB_PATH.test(pathname);
 }
 
 // Functions 路由处理 - 处理所有 HTTP 方法
