@@ -1,3 +1,80 @@
+# Blossom ImgBed
+
+*A Blossom-compatible Nostr media server powered by CloudFlare-ImgBed multi-storage backends.*
+
+**Status: Early development**
+
+Blossom ImgBed is an independent project based on CloudFlare-ImgBed, designed to add Blossom protocol support, Nostr public-key authentication, and public multi-storage media hosting.
+
+Blossom support is not implemented yet. During future development, the Blossom API layer will reuse CloudFlare-ImgBed's existing storage, channel, and upload infrastructure instead of reimplementing storage providers.
+
+## Architecture
+
+```text
+Nostr Client
+│
+│ BUD-11
+▼
+Blossom ImgBed
+│
+├── Blossom protocol
+├── Nostr authentication
+├── pubkey authorization
+└── existing ImgBed storage layer
+    │
+    ├── Cloudflare R2
+    ├── Telegram
+    ├── S3
+    ├── WebDAV
+    ├── Hugging Face
+    └── Discord
+```
+
+The Blossom layer will not reimplement any Storage Provider. Future Blossom APIs should reuse the storage, channel-selection, load-balancing, and upload infrastructure already provided by CloudFlare-ImgBed.
+
+## Roadmap
+
+### Phase 1
+
+* Blossom protocol core
+* BUD-11 authentication
+* Nostr pubkey authorization
+* PUT /upload
+* GET /<sha256>
+* HEAD /<sha256>
+* DELETE /<sha256>
+
+### Phase 2
+
+* Pubkey ownership
+* Upload quota
+* Rate limiting
+* Public upload policy
+
+### Phase 3
+
+* Nostr Web login
+* NIP-07
+* User media dashboard
+
+### Phase 4
+
+* Public Blossom service
+* Abuse protection
+* Moderation
+* Multi-storage health/failover
+
+## Credits
+
+This project is based on CloudFlare-ImgBed.
+
+Original project:
+https://github.com/MarSeventh/CloudFlare-ImgBed
+
+The original MIT [LICENSE](LICENSE) and copyright notice are retained.
+
+## CloudFlare-ImgBed foundation documentation
+
 <div align="center">
     <a href="https://github.com/MarSeventh/CloudFlare-ImgBed"><img width="80%" alt="logo" src="readme/banner.png" /></a>
     <p><em>🗂️ Beyond image hosting: an all-in-one, open-source file management hub.</em></p>
