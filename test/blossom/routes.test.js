@@ -1,0 +1,187 @@
+import assert from 'node:assert/strict';
+import { createUploadHandler } from '../../functions/blossom/upload.js';
+import { createBlobHandler } from '../../functions/blossom/blob.js';
+import { createDeleteHandler } from '../../functions/blossom/delete.js';
+import { sha256Hex } from '../../functions/blossom/hash.js';
+import { selectConsistentChannel } from '../../functions/upload/uploadTools.js';
+import { onRequest as blossomRootRoute } from '../../functions/[sha256].js';
+
+const PUBKEY_A = '1'.repeat(64);
+const PUBKEY_B = '2'.repeat(64);
+
+function context(request) {
+    return { request, env: { BLOSSOM_ENABLED: 'true' }, data: {}, waitUntil() {} };
+}
+
+async function uploadRequest(bytes, hash) {
+    return new Request('https://blossom.example/upload', {
+        method: 'PUT',
+        headers: { 'X-SHA-256': hash, 'Content-Type': 'text/plain' },
+        body: bytes,
+    });
+}
+
+describe('Blossom upload', () => {
+    it('uploads an authorized blob through the existing ImgBed pipeline', async () => {
+        const bytes = new TextEncoder().encode('hello blossom');
+        const hash = await sha256Hex(bytes);
+        let pipelineCalls = 0;
+        let storedBlob;
+        let ownership;
+        const handler = createUploadHandler({
+            authenticate: () => ({ pubkey: PUBKEY_A }),
+            getBlob: async () => null,
+            putBlob: async (_env, blob) => { storedBlob = blob; },
+            addOwnership: async (_env, sha256, pubkey) => { ownership = [sha256, pubkey]; },
+            uploadViaImgBed: async (_context, file, sha256, processFileUpload) => {
+                pipelineCalls++;
+                assert.equal(file.size, bytes.length);
+                assert.equal(sha256, hash);
+                assert.equal(typeof processFileUpload, 'function');
+                return `blossom/${hash}.txt`;
+            },
+        });
+        const response = await handler(context(await uploadRequest(bytes, hash)), () => {});
+        const descriptor = await response.json();
+        assert.equal(response.status, 201);
+        assert.equal(pipelineCalls, 1);
+        assert.equal(storedBlob.sha256, hash);
+        assert.deepEqual(ownership, [hash, PUBKEY_A]);
+        assert.deepEqual(Object.keys(descriptor), ['url', 'sha256', 'size', 'type', 'uploaded']);
+    });
+
+    it('rejects a body hash mismatch before the ImgBed pipeline is called', async () => {
+        const bytes = new TextEncoder().encode('wrong body');
+        let pipelineCalls = 0;
+        const handler = createUploadHandler({
+            authenticate: () => ({ pubkey: PUBKEY_A }),
+            uploadViaImgBed: async () => { pipelineCalls++; },
+        });
+        const response = await handler(context(await uploadRequest(bytes, 'a'.repeat(64))), () => {});
+        assert.equal(response.status, 409);
+        assert.equal(pipelineCalls, 0);
+    });
+
+    it('deduplicates an existing blob only after authorization and records another owner', async () => {
+        const bytes = new TextEncoder().encode('duplicate');
+        const hash = await sha256Hex(bytes);
+        const blob = { sha256: hash, imgbedId: 'existing.txt', size: bytes.length, type: 'text/plain', uploaded: 1 };
+        let authenticated = false;
+        let pipelineCalls = 0;
+        let addedOwner;
+        const handler = createUploadHandler({
+            authenticate: () => { authenticated = true; return { pubkey: PUBKEY_B }; },
+            getBlob: async () => blob,
+            getImgBedRecord: async () => ({ metadata: {} }),
+            addOwnership: async (_env, _hash, pubkey) => { addedOwner = pubkey; },
+            uploadViaImgBed: async () => { pipelineCalls++; },
+        });
+        const response = await handler(context(await uploadRequest(bytes, hash)), () => {});
+        assert.equal(response.status, 200);
+        assert.equal(authenticated, true);
+        assert.equal(addedOwner, PUBKEY_B);
+        assert.equal(pipelineCalls, 0);
+    });
+});
+
+describe('Blossom GET and HEAD', () => {
+    const hash = 'a'.repeat(64);
+    const blob = { sha256: hash, imgbedId: 'stored.bin', size: 4, type: 'application/octet-stream', uploaded: 1 };
+
+    it('returns an existing blob through the ImgBed reader', async () => {
+        const handler = createBlobHandler({
+            getBlob: async () => blob,
+            readViaImgBed: async () => new Response('data'),
+        });
+        const response = await handler(context(new Request(`https://blossom.example/${hash}`)), hash);
+        assert.equal(response.status, 200);
+        assert.equal(await response.text(), 'data');
+        assert.equal(response.headers.get('Content-Length'), '4');
+        assert.equal(response.headers.get('ETag'), `"${hash}"`);
+    });
+
+    it('returns 404 for a missing blob and 400 for an invalid hash', async () => {
+        const handler = createBlobHandler({ getBlob: async () => null });
+        assert.equal((await handler(context(new Request(`https://blossom.example/${hash}`)), hash)).status, 404);
+        assert.equal((await handler(context(new Request('https://blossom.example/bad')), 'bad')).status, 400);
+    });
+
+    it('returns HEAD metadata with no body', async () => {
+        const handler = createBlobHandler({
+            getBlob: async () => blob,
+            readViaImgBed: async () => new Response(null, { headers: { 'Content-Length': '0' } }),
+        });
+        const request = new Request(`https://blossom.example/${hash}`, { method: 'HEAD' });
+        const response = await handler(context(request), hash);
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get('Content-Length'), '4');
+        assert.equal(await response.text(), '');
+    });
+});
+
+describe('Blossom DELETE', () => {
+    const hash = 'b'.repeat(64);
+    const blob = { sha256: hash, imgbedId: 'stored.bin', size: 4, type: 'application/octet-stream', uploaded: 1 };
+    const deleteRequest = new Request(`https://blossom.example/${hash}`, { method: 'DELETE' });
+
+    it('lets an owner delete the last physical blob through ImgBed', async () => {
+        let physicalDeletes = 0;
+        let metadataDeletes = 0;
+        const handler = createDeleteHandler({
+            authenticate: () => ({ pubkey: PUBKEY_A }), getBlob: async () => blob,
+            hasOwnership: async () => true, removeOwnership: async () => {}, countOwnerships: async () => 0,
+            deleteViaImgBed: async () => { physicalDeletes++; return true; },
+            deleteBlob: async () => { metadataDeletes++; },
+        });
+        const response = await handler(context(deleteRequest), hash);
+        assert.equal(response.status, 204);
+        assert.equal(physicalDeletes, 1);
+        assert.equal(metadataDeletes, 1);
+    });
+
+    it('denies a non-owner', async () => {
+        let physicalDeletes = 0;
+        const handler = createDeleteHandler({
+            authenticate: () => ({ pubkey: PUBKEY_B }), getBlob: async () => blob,
+            hasOwnership: async () => false,
+            deleteViaImgBed: async () => { physicalDeletes++; return true; },
+        });
+        assert.equal((await handler(context(deleteRequest), hash)).status, 403);
+        assert.equal(physicalDeletes, 0);
+    });
+
+    it('keeps the physical blob when another owner remains', async () => {
+        let physicalDeletes = 0;
+        const handler = createDeleteHandler({
+            authenticate: () => ({ pubkey: PUBKEY_A }), getBlob: async () => blob,
+            hasOwnership: async () => true, removeOwnership: async () => {}, countOwnerships: async () => 1,
+            deleteViaImgBed: async () => { physicalDeletes++; return true; },
+        });
+        assert.equal((await handler(context(deleteRequest), hash)).status, 204);
+        assert.equal(physicalDeletes, 0);
+    });
+});
+
+describe('ImgBed regression guards', () => {
+    it('retains the existing channel-selection behavior', () => {
+        const channels = [{ name: 'first' }, { name: 'second' }];
+        assert.equal(selectConsistentChannel(channels, 'upload-id', false), channels[0]);
+        assert.equal(selectConsistentChannel(channels, 'upload-id', true), selectConsistentChannel(channels, 'upload-id', true));
+    });
+
+    it('passes non-Blossom and disabled routes through to the existing UI/API', async () => {
+        let passes = 0;
+        const fallback = async () => { passes++; return new Response('legacy'); };
+        const disabled = await blossomRootRoute({
+            request: new Request(`https://blossom.example/${'a'.repeat(64)}`),
+            env: { BLOSSOM_ENABLED: 'false' }, params: { sha256: 'a'.repeat(64) }, next: fallback,
+        });
+        const nonHash = await blossomRootRoute({
+            request: new Request('https://blossom.example/dashboard'),
+            env: { BLOSSOM_ENABLED: 'true' }, params: { sha256: 'dashboard' }, next: fallback,
+        });
+        assert.equal(await disabled.text(), 'legacy');
+        assert.equal(await nonHash.text(), 'legacy');
+        assert.equal(passes, 2);
+    });
+});

@@ -73,6 +73,23 @@ CREATE TABLE IF NOT EXISTS other_data (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Blossom protocol metadata is deliberately separate from ImgBed storage metadata.
+CREATE TABLE IF NOT EXISTS blossom_blobs (
+    sha256 TEXT PRIMARY KEY,
+    imgbed_id TEXT NOT NULL UNIQUE,
+    size INTEGER NOT NULL,
+    mime_type TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS blossom_ownership (
+    sha256 TEXT NOT NULL,
+    pubkey TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (sha256, pubkey),
+    FOREIGN KEY (sha256) REFERENCES blossom_blobs(sha256) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_timestamp ON files(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_files_directory ON files(directory);
 CREATE INDEX IF NOT EXISTS idx_files_channel ON files(channel);
@@ -88,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_index_operations_processed ON index_operations(pr
 CREATE INDEX IF NOT EXISTS idx_index_operations_type ON index_operations(type);
 
 CREATE INDEX IF NOT EXISTS idx_other_data_type ON other_data(type);
+CREATE INDEX IF NOT EXISTS idx_blossom_ownership_pubkey ON blossom_ownership(pubkey);
 
 CREATE TRIGGER IF NOT EXISTS update_files_updated_at 
     AFTER UPDATE ON files
@@ -112,4 +130,3 @@ CREATE TRIGGER IF NOT EXISTS update_other_data_updated_at
     BEGIN
         UPDATE other_data SET updated_at = CURRENT_TIMESTAMP WHERE key = NEW.key;
     END;
-

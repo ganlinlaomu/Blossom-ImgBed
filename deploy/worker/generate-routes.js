@@ -45,6 +45,7 @@ function toVarName(filePath) {
         .replace(/\\/g, '/')
         .replace(/\.js$/, '')
         .replace(/\[\[path\]\]/g, 'catchAll')
+        .replace(/\[([^\[\]]+)\]/g, '$1')
         .replace(/\/index$/, '_index');
     
     // 转为 camelCase
@@ -71,7 +72,15 @@ function toUrlPath(filePath) {
         rel = rel.slice(0, -'[[path]]'.length); // 保留尾部斜杠
     }
     
-    return { urlPath: '/' + rel, isCatchAll };
+    const paramNames = [];
+    const routeSegments = rel.split('/').map(segment => {
+        const match = /^\[([^\[\]]+)\]$/.exec(segment);
+        if (!match) return segment;
+        paramNames.push(match[1]);
+        return `:${match[1]}`;
+    });
+
+    return { urlPath: '/' + routeSegments.join('/'), isCatchAll, paramNames };
 }
 
 /**
@@ -143,13 +152,14 @@ function scanDir(dir) {
         
         const varName = toVarName(fullPath);
         const importPath = toImportPath(fullPath);
-        const { urlPath, isCatchAll } = toUrlPath(fullPath);
+        const { urlPath, isCatchAll, paramNames } = toUrlPath(fullPath);
         
         routes.push({
             urlPath,
             importPath,
             varName,
             isCatchAll,
+            paramNames,
             dir: relative(FUNCTIONS_DIR, dir).replace(/\\/g, '/'),
         });
     }
@@ -168,6 +178,9 @@ for (const route of routes) {
 // 排序：精确路由在前，catch-all 在后；同类中按路径深度降序（深的优先匹配）
 routes.sort((a, b) => {
     if (a.isCatchAll !== b.isCatchAll) return a.isCatchAll ? 1 : -1;
+    const dynamicA = a.paramNames.length > 0;
+    const dynamicB = b.paramNames.length > 0;
+    if (dynamicA !== dynamicB) return dynamicA ? 1 : -1;
     const depthA = a.urlPath.split('/').length;
     const depthB = b.urlPath.split('/').length;
     if (depthA !== depthB) return depthB - depthA;
@@ -193,6 +206,8 @@ for (const route of routes) {
     
     if (route.isCatchAll) {
         routeEntries += `    { path: '${route.urlPath}', module: ${route.varName}, middlewares: ${mwArray}, catchAll: true },\n`;
+    } else if (route.paramNames.length > 0) {
+        routeEntries += `    { path: '${route.urlPath}', module: ${route.varName}, middlewares: ${mwArray}, dynamic: true },\n`;
     } else {
         routeEntries += `    { path: '${route.urlPath}', module: ${route.varName}, middlewares: ${mwArray} },\n`;
     }
@@ -226,6 +241,18 @@ function matchRoute(pathname) {
                 const pathParam = rest.split('/').filter(Boolean);
                 return { route, params: { path: pathParam } };
             }
+        } else if (route.dynamic) {
+            const routeParts = route.path.split('/').filter(Boolean);
+            const pathParts = pathname.split('/').filter(Boolean);
+            if (routeParts.length !== pathParts.length) continue;
+            const params = {};
+            let matches = true;
+            for (let index = 0; index < routeParts.length; index++) {
+                const routePart = routeParts[index];
+                if (routePart.startsWith(':')) params[routePart.slice(1)] = pathParts[index];
+                else if (routePart !== pathParts[index]) matches = false;
+            }
+            if (matches) return { route, params };
         } else {
             if (pathname === route.path || pathname === route.path + '/') {
                 return { route, params: {} };

@@ -6,7 +6,38 @@
 
 Blossom ImgBed is an independent project based on CloudFlare-ImgBed, designed to add Blossom protocol support, Nostr public-key authentication, and public multi-storage media hosting.
 
-Blossom support is not implemented yet. During future development, the Blossom API layer will reuse CloudFlare-ImgBed's existing storage, channel, and upload infrastructure instead of reimplementing storage providers.
+The initial Blossom core is implemented as an additive protocol layer. It reuses CloudFlare-ImgBed's existing storage, channel, upload, read/proxy, and deletion infrastructure instead of reimplementing storage providers.
+
+## Blossom Support
+
+PR1 adds the first Blossom protocol surface while keeping the original ImgBed UI and APIs intact:
+
+* BUD-11 Nostr authorization using signed kind `24242` events
+* `PUT /upload` (BUD-02)
+* `GET /<sha256>` and `HEAD /<sha256>` (BUD-01)
+* `DELETE /<sha256>` (BUD-12)
+* SHA-256 validation, basic deduplication, and many-to-many pubkey ownership
+
+Set `BLOSSOM_ENABLED=true` to enable these endpoints. BUD-11 events are accepted for five minutes by default; deployments can set `BLOSSOM_AUTH_MAX_AGE_SECONDS` to another non-negative value (maximum one day). `BLOSSOM_AUTH_FUTURE_SKEW_SECONDS` defaults to `0` to follow BUD-11's requirement that `created_at` be in the past, but can be set up to 300 seconds when controlled clients require clock-skew tolerance.
+
+For D1 deployments, apply [`database/migrations/v2.8.0_add_blossom_metadata.sql`](database/migrations/v2.8.0_add_blossom_metadata.sql). Docker/SQLite deployments apply this migration automatically. KV deployments use the isolated `manage@blossom@...` keyspace.
+
+The authorization value below is a placeholder for a Base64url-encoded, signed kind `24242` event. Never send an `nsec` or any other private key to the server.
+
+```bash
+sha256="$(sha256sum ./photo.jpg | cut -d ' ' -f 1)"
+
+curl -X PUT "https://blossom.example/upload" \
+  -H "Authorization: Nostr $BUD11_EVENT_BASE64URL" \
+  -H "X-SHA-256: $sha256" \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @./photo.jpg
+
+curl -I "https://blossom.example/$sha256.jpg"
+
+curl -X DELETE "https://blossom.example/$sha256" \
+  -H "Authorization: Nostr $BUD11_DELETE_EVENT_BASE64URL"
+```
 
 ## Architecture
 

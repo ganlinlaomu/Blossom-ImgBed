@@ -13,10 +13,18 @@ import { HuggingFaceAPI } from "../utils/storage/huggingfaceAPI";
 import { WebDAVAPI } from "../utils/storage/webdavAPI";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getDatabase } from '../utils/databaseAdapter.js';
+import { isBlossomEnabled } from '../blossom/auth.js';
+import { handleBlossomUpload } from '../blossom/upload.js';
 
 
 export async function onRequest(context) {  // Contents of context object
     const { request, env, params, waitUntil, next, data } = context;
+
+    // Blossom is additive: only enabled PUT requests use the Blossom pipeline.
+    // All legacy ImgBed methods retain their existing behavior.
+    if (request.method === 'PUT' && isBlossomEnabled(env)) {
+        return handleBlossomUpload(context, processFileUpload);
+    }
 
     // 解析请求的URL，存入 context
     const url = new URL(request.url);
@@ -75,7 +83,7 @@ export async function onRequest(context) {  // Contents of context object
 
 
 // 通用文件上传处理函数
-async function processFileUpload(context, formdata = null) {
+export async function processFileUpload(context, formdata = null) {
     const { request, url } = context;
 
     // 解析表单数据
