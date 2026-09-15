@@ -4,9 +4,131 @@
 
 **Status: Early development**
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ganlinlaomu/Blossom-ImgBed)
+
 Blossom ImgBed is an independent project based on CloudFlare-ImgBed, designed to add Blossom protocol support, Nostr public-key authentication, and public multi-storage media hosting.
 
-Blossom support is not implemented yet. During future development, the Blossom API layer will reuse CloudFlare-ImgBed's existing storage, channel, and upload infrastructure instead of reimplementing storage providers.
+The initial Blossom core is implemented as an additive protocol layer. It reuses CloudFlare-ImgBed's existing storage, channel, upload, read/proxy, and deletion infrastructure instead of reimplementing storage providers.
+
+## Deploy to Cloudflare
+
+Click the button above to open Cloudflare's guided deployment page. Cloudflare clones this public repository into your GitHub or GitLab account, lets you choose the repository, Worker, D1, and R2 names, automatically provisions the resources, initializes the database, builds the Worker, and deploys the frontend and APIs.
+
+The setup page asks for these Worker secrets:
+
+* `BASIC_USER`: administrator username
+* `BASIC_PASS`: a strong administrator password
+
+The deployment template enables Blossom and provisions:
+
+* D1 binding `img_d1` for ImgBed metadata, Blossom ownership, allowlist, challenges, and sessions
+* R2 binding `img_r2` for object storage
+* the existing Cloudflare Images binding and static frontend assets
+
+After deployment:
+
+1. Open the generated `workers.dev` URL and sign in to the ImgBed administrator console.
+2. Open `/blossom-access.html` and add the Nostr pubkeys allowed to write.
+3. Open `/blossom-upload.html` with a NIP-07 signer, or use any standard Blossom client.
+4. Configure another existing ImgBed storage provider in the administrator console only if you do not want to use the provisioned R2 backend.
+
+The one-click flow uses the root [`wrangler.jsonc`](wrangler.jsonc). `npm run deploy` regenerates the Worker routes, runs the idempotent [`database/init.sql`](database/init.sql) against the provisioned D1 binding, and deploys the Worker. No Cloudflare API token is stored in this repository.
+
+## Blossom Support
+
+PR1 adds the first Blossom protocol surface while keeping the original ImgBed UI and APIs intact:
+
+* BUD-11 Nostr authorization using signed kind `24242` events
+* `PUT /upload` (BUD-02)
+* `GET /<sha256>` and `HEAD /<sha256>` (BUD-01)
+* `DELETE /<sha256>` (BUD-12)
+* SHA-256 validation, basic deduplication, and many-to-many pubkey ownership
+
+Set `BLOSSOM_ENABLED=true` to enable these endpoints. BUD-11 events are accepted for five minutes by default; deployments can set `BLOSSOM_AUTH_MAX_AGE_SECONDS` to another non-negative value (maximum one day). `BLOSSOM_AUTH_FUTURE_SKEW_SECONDS` defaults to `0` to follow BUD-11's requirement that `created_at` be in the past, but can be set up to 300 seconds when controlled clients require clock-skew tolerance.
+
+For D1 deployments, apply [`database/migrations/v2.8.0_add_blossom_metadata.sql`](database/migrations/v2.8.0_add_blossom_metadata.sql). Docker/SQLite deployments apply this migration automatically. KV deployments use the isolated `manage@blossom@...` keyspace.
+
+## Blossom Upload Access
+
+Blossom write access is allowlist-only. An administrator must add a Nostr public key on the **Blossom Access** page at `/blossom-access.html` before that key can upload or delete blobs. The page is linked from the existing admin screens and uses the existing ImgBed administrator session; it does not introduce another password or user system.
+
+The admin interface accepts either a 64-character hex public key or an `npub`. Values are decoded and stored as lowercase hex. It never accepts or requests an `nsec` or any other private key.
+
+Access rules are:
+
+* `GET /<sha256>` and `HEAD /<sha256>` remain public.
+* `PUT /upload` requires valid BUD-11 authentication and a pubkey in the allowlist.
+* `DELETE /<sha256>` requires valid BUD-11 authentication, a pubkey in the allowlist, and existing blob ownership.
+* Removing a pubkey only revokes future Blossom write access; it does not delete existing blobs or ownership metadata.
+
+The allowlist admin API is protected by the existing `/api/manage` administrator authentication:
+
+```text
+GET    /api/manage/blossom/pubkeys
+POST   /api/manage/blossom/pubkeys
+DELETE /api/manage/blossom/pubkeys/<pubkey>
+```
+
+For D1 deployments, also apply [`database/migrations/v2.9.0_add_blossom_allowlist.sql`](database/migrations/v2.9.0_add_blossom_allowlist.sql). Docker/SQLite applies it automatically. KV deployments use isolated `manage@blossom@allowed-pubkey@...` keys.
+
+## NIP-07 Web Login
+
+The lightweight Blossom upload page is available at `/blossom-upload.html` and requires a NIP-07-compatible browser signer. Login proves control of a Nostr public key by signing a short-lived, domain-bound challenge; the verified pubkey must still exist in the administrator allowlist.
+
+Private keys are never entered into or sent to Blossom ImgBed. Signing stays inside the user's NIP-07 extension. The resulting Web session is stored as a random server-side session token in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie and expires after 24 hours. `/api/blossom/auth/me` checks the allowlist again, so removing a pubkey immediately invalidates its Web access.
+
+Authentication endpoints:
+
+```text
+GET  /api/blossom/auth/challenge
+POST /api/blossom/auth/login
+GET  /api/blossom/auth/me
+POST /api/blossom/auth/logout
+```
+
+Login challenges expire after five minutes by default. `BLOSSOM_LOGIN_CHALLENGE_TTL_SECONDS` may be set from 60 through 600 seconds. Each challenge is deleted after one valid signed use to prevent replay.
+
+Web uploads do not use an internal or session-only upload API. The browser hashes the selected file with Web Crypto, asks the NIP-07 signer to sign the standard kind `24242` BUD-11 upload event, and sends the file to the same `PUT /upload` endpoint used by external Blossom clients. The server independently verifies BUD-11, the allowlist, and the uploaded bytes before invoking the existing ImgBed storage pipeline.
+
+```text
+Browser
+   │
+   │ NIP-07
+   ▼
+Nostr Signature
+   │
+   ▼
+Allowlist Check
+   │
+   ▼
+Web Session
+   │
+   ▼
+BUD-11 Upload
+   │
+   ▼
+PUT /upload
+   │
+   ▼
+Existing ImgBed Storage
+```
+
+The authorization value below is a placeholder for a Base64url-encoded, signed kind `24242` event. Never send an `nsec` or any other private key to the server.
+
+```bash
+sha256="$(sha256sum ./photo.jpg | cut -d ' ' -f 1)"
+
+curl -X PUT "https://blossom.example/upload" \
+  -H "Authorization: Nostr $BUD11_EVENT_BASE64URL" \
+  -H "X-SHA-256: $sha256" \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @./photo.jpg
+
+curl -I "https://blossom.example/$sha256.jpg"
+
+curl -X DELETE "https://blossom.example/$sha256" \
+  -H "Authorization: Nostr $BUD11_DELETE_EVENT_BASE64URL"
+```
 
 ## Architecture
 
