@@ -22,6 +22,7 @@ import * as apiManageBatchIndexFinalize from '../../functions/api/manage/batch/i
 import * as apiManageBatchRestoreChunk from '../../functions/api/manage/batch/restore/chunk.js';
 import * as apiManageBatchList from '../../functions/api/manage/batch/list.js';
 import * as apiManageBatchSettings from '../../functions/api/manage/batch/settings.js';
+import * as apiManageBlossomPubkeys from '../../functions/api/manage/blossom/pubkeys.js';
 import * as apiManageCusConfigBlockip from '../../functions/api/manage/cusConfig/blockip.js';
 import * as apiManageCusConfigBlockipList from '../../functions/api/manage/cusConfig/blockipList.js';
 import * as apiManageCusConfigFiles from '../../functions/api/manage/cusConfig/files.js';
@@ -53,6 +54,7 @@ import * as apiFetchRes from '../../functions/api/fetchRes.js';
 import * as apiUserConfig from '../../functions/api/userConfig.js';
 import * as random_index from '../../functions/random/index.js';
 import * as upload_index from '../../functions/upload/index.js';
+import * as apiManageBlossomPubkeysPubkey from '../../functions/api/manage/blossom/pubkeys/[pubkey].js';
 import * as sha256 from '../../functions/[sha256].js';
 import * as apiManageBlockCatchAll from '../../functions/api/manage/block/[[path]].js';
 import * as apiManageDeleteCatchAll from '../../functions/api/manage/delete/[[path]].js';
@@ -74,6 +76,7 @@ const routes = [
     { path: '/api/manage/batch/restore/chunk', module: apiManageBatchRestoreChunk, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/batch/list', module: apiManageBatchList, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/batch/settings', module: apiManageBatchSettings, middlewares: [mw_api, mw_api_manage] },
+    { path: '/api/manage/blossom/pubkeys', module: apiManageBlossomPubkeys, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/blockip', module: apiManageCusConfigBlockip, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/blockipList', module: apiManageCusConfigBlockipList, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/files', module: apiManageCusConfigFiles, middlewares: [mw_api, mw_api_manage] },
@@ -105,6 +108,7 @@ const routes = [
     { path: '/api/userConfig', module: apiUserConfig, middlewares: [mw_api] },
     { path: '/random', module: random_index, middlewares: [mw_random] },
     { path: '/upload', module: upload_index, middlewares: [mw_upload] },
+    { path: '/api/manage/blossom/pubkeys/:pubkey', module: apiManageBlossomPubkeysPubkey, middlewares: [mw_api, mw_api_manage], dynamic: true },
     { path: '/:sha256', module: sha256, middlewares: [], dynamic: true },
     { path: '/api/manage/block/', module: apiManageBlockCatchAll, middlewares: [mw_api, mw_api_manage], catchAll: true },
     { path: '/api/manage/delete/', module: apiManageDeleteCatchAll, middlewares: [mw_api, mw_api_manage], catchAll: true },

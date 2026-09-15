@@ -22,6 +22,29 @@ Set `BLOSSOM_ENABLED=true` to enable these endpoints. BUD-11 events are accepted
 
 For D1 deployments, apply [`database/migrations/v2.8.0_add_blossom_metadata.sql`](database/migrations/v2.8.0_add_blossom_metadata.sql). Docker/SQLite deployments apply this migration automatically. KV deployments use the isolated `manage@blossom@...` keyspace.
 
+## Blossom Upload Access
+
+Blossom write access is allowlist-only. An administrator must add a Nostr public key on the **Blossom Access** page at `/blossom-access.html` before that key can upload or delete blobs. The page is linked from the existing admin screens and uses the existing ImgBed administrator session; it does not introduce another password or user system.
+
+The admin interface accepts either a 64-character hex public key or an `npub`. Values are decoded and stored as lowercase hex. It never accepts or requests an `nsec` or any other private key.
+
+Access rules are:
+
+* `GET /<sha256>` and `HEAD /<sha256>` remain public.
+* `PUT /upload` requires valid BUD-11 authentication and a pubkey in the allowlist.
+* `DELETE /<sha256>` requires valid BUD-11 authentication, a pubkey in the allowlist, and existing blob ownership.
+* Removing a pubkey only revokes future Blossom write access; it does not delete existing blobs or ownership metadata.
+
+The allowlist admin API is protected by the existing `/api/manage` administrator authentication:
+
+```text
+GET    /api/manage/blossom/pubkeys
+POST   /api/manage/blossom/pubkeys
+DELETE /api/manage/blossom/pubkeys/<pubkey>
+```
+
+For D1 deployments, also apply [`database/migrations/v2.9.0_add_blossom_allowlist.sql`](database/migrations/v2.9.0_add_blossom_allowlist.sql). Docker/SQLite applies it automatically. KV deployments use isolated `manage@blossom@allowed-pubkey@...` keys.
+
 The authorization value below is a placeholder for a Base64url-encoded, signed kind `24242` event. Never send an `nsec` or any other private key to the server.
 
 ```bash

@@ -30,6 +30,7 @@ describe('Blossom upload', () => {
         let ownership;
         const handler = createUploadHandler({
             authenticate: () => ({ pubkey: PUBKEY_A }),
+            isPubkeyAllowed: async () => true,
             getBlob: async () => null,
             putBlob: async (_env, blob) => { storedBlob = blob; },
             addOwnership: async (_env, sha256, pubkey) => { ownership = [sha256, pubkey]; },
@@ -55,6 +56,7 @@ describe('Blossom upload', () => {
         let pipelineCalls = 0;
         const handler = createUploadHandler({
             authenticate: () => ({ pubkey: PUBKEY_A }),
+            isPubkeyAllowed: async () => true,
             uploadViaImgBed: async () => { pipelineCalls++; },
         });
         const response = await handler(context(await uploadRequest(bytes, 'a'.repeat(64))), () => {});
@@ -71,6 +73,7 @@ describe('Blossom upload', () => {
         let addedOwner;
         const handler = createUploadHandler({
             authenticate: () => { authenticated = true; return { pubkey: PUBKEY_B }; },
+            isPubkeyAllowed: async () => true,
             getBlob: async () => blob,
             getImgBedRecord: async () => ({ metadata: {} }),
             addOwnership: async (_env, _hash, pubkey) => { addedOwner = pubkey; },
@@ -129,6 +132,7 @@ describe('Blossom DELETE', () => {
         let metadataDeletes = 0;
         const handler = createDeleteHandler({
             authenticate: () => ({ pubkey: PUBKEY_A }), getBlob: async () => blob,
+            isPubkeyAllowed: async () => true,
             hasOwnership: async () => true, removeOwnership: async () => {}, countOwnerships: async () => 0,
             deleteViaImgBed: async () => { physicalDeletes++; return true; },
             deleteBlob: async () => { metadataDeletes++; },
@@ -143,6 +147,7 @@ describe('Blossom DELETE', () => {
         let physicalDeletes = 0;
         const handler = createDeleteHandler({
             authenticate: () => ({ pubkey: PUBKEY_B }), getBlob: async () => blob,
+            isPubkeyAllowed: async () => true,
             hasOwnership: async () => false,
             deleteViaImgBed: async () => { physicalDeletes++; return true; },
         });
@@ -154,6 +159,7 @@ describe('Blossom DELETE', () => {
         let physicalDeletes = 0;
         const handler = createDeleteHandler({
             authenticate: () => ({ pubkey: PUBKEY_A }), getBlob: async () => blob,
+            isPubkeyAllowed: async () => true,
             hasOwnership: async () => true, removeOwnership: async () => {}, countOwnerships: async () => 1,
             deleteViaImgBed: async () => { physicalDeletes++; return true; },
         });

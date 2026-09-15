@@ -90,6 +90,12 @@ CREATE TABLE IF NOT EXISTS blossom_ownership (
     FOREIGN KEY (sha256) REFERENCES blossom_blobs(sha256) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS blossom_allowed_pubkeys (
+    pubkey TEXT PRIMARY KEY,
+    note TEXT,
+    created_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_timestamp ON files(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_files_directory ON files(directory);
 CREATE INDEX IF NOT EXISTS idx_files_channel ON files(channel);
@@ -106,6 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_index_operations_type ON index_operations(type);
 
 CREATE INDEX IF NOT EXISTS idx_other_data_type ON other_data(type);
 CREATE INDEX IF NOT EXISTS idx_blossom_ownership_pubkey ON blossom_ownership(pubkey);
+CREATE INDEX IF NOT EXISTS idx_blossom_allowed_pubkeys_created_at ON blossom_allowed_pubkeys(created_at DESC);
 
 CREATE TRIGGER IF NOT EXISTS update_files_updated_at 
     AFTER UPDATE ON files
