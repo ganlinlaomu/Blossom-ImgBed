@@ -29,12 +29,8 @@ export function assertEventShape(event) {
     }
 }
 
-export function verifyAuthorizationEvent(event) {
+export function verifyNostrEvent(event) {
     assertEventShape(event);
-
-    if (event.kind !== BLOSSOM_EVENT_KIND) {
-        throw new BlossomError(401, `Nostr authorization kind must be ${BLOSSOM_EVENT_KIND}`);
-    }
 
     let calculatedId;
     try {
@@ -55,5 +51,13 @@ export function verifyAuthorizationEvent(event) {
         throw new BlossomError(401, 'Invalid Nostr Schnorr signature');
     }
 
+    return event;
+}
+
+export function verifyAuthorizationEvent(event) {
+    verifyNostrEvent(event);
+    if (event.kind !== BLOSSOM_EVENT_KIND) {
+        throw new BlossomError(401, `Nostr authorization kind must be ${BLOSSOM_EVENT_KIND}`);
+    }
     return event;
 }
