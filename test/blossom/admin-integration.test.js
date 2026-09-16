@@ -25,11 +25,12 @@ describe('Blossom product integration', () => {
         assert.doesNotMatch(html, /href="\/login"|href="\/blossom-upload\.html"|href="\/blossom-access\.html"/);
     });
 
-    it('integrates Blossom controls into the existing System Settings page', () => {
+    it('integrates Blossom controls into the existing User Management page', () => {
         const script = read('frontend-dist/js/blossom-admin-settings.js');
         assert.match(script, /pushState/);
         assert.match(script, /blossom-admin-shortcut/);
-        assert.match(script, /\/systemConfig#blossom/);
+        assert.match(script, /\/customerConfig#blossom/);
+        assert.match(script, /blossom-user-management-tabs/);
         assert.match(script, /Enable Blossom/);
         assert.match(script, /Allowed Nostr Pubkeys/);
         assert.match(script, /\/api\/manage\/blossom\/settings/);
