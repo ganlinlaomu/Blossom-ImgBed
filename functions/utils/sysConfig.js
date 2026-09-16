@@ -102,7 +102,7 @@ export async function fetchSecurityConfig(env, options = {}) {
         return {
             auth: {
                 user: { authCode: "" },
-                admin: { adminUsername: "", adminPassword: "" }
+                admin: { adminUsername: "admin", adminPassword: "admin" }
             },
             upload: {
                 moderate: { enabled: false, channel: "default", moderateContentApiKey: "", nsfwApiPath: "" },

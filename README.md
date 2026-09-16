@@ -1,415 +1,117 @@
-# Blossom ImgBed
+# Blossom-ImgBed
 
-*A Blossom-compatible Nostr media server powered by CloudFlare-ImgBed multi-storage backends.*
+Blossom-ImgBed is a self-hosted [Blossom](https://github.com/hzrd149/blossom) media server for Nostr, powered by the CloudFlare-ImgBed multi-storage engine.
 
-**Status: Early development**
+It keeps the two trust domains deliberately separate:
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ganlinlaomu/Blossom-ImgBed)
+- Administrators sign in to the existing ImgBed Admin Dashboard to configure the server.
+- Nostr users never sign in to the website. A compatible client signs every upload or delete request using standard BUD-11 authorization.
 
-Blossom ImgBed is an independent project based on CloudFlare-ImgBed, designed to add Blossom protocol support, Nostr public-key authentication, and public multi-storage media hosting.
-
-The initial Blossom core is implemented as an additive protocol layer. It reuses CloudFlare-ImgBed's existing storage, channel, upload, read/proxy, and deletion infrastructure instead of reimplementing storage providers.
-
-## Deploy to Cloudflare
-
-Connect this repository to a Worker with the Cloudflare GitHub App / Workers Builds. The repository's deploy script automatically initializes the bound D1 database with [`database/init.sql`](database/init.sql) before publishing the Worker. The SQL is idempotent, so it is safe to run again on later deployments and does not delete existing data.
-
-Cloudflare references: [Git integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/), [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), and [D1 binding/setup](https://developers.cloudflare.com/d1/get-started/).
-
-Use these Workers Builds commands:
-
-```text
-Build command:  npm run build
-Deploy command: npm run deploy
-```
-
-This deployment model uses Cloudflare's Git integration. It does not require a GitHub Actions workflow, `CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_ACCOUNT_ID` repository secrets.
-
-### Fresh installation
-
-1. Use the **Deploy to Cloudflare** button above and connect the generated repository to Workers Builds.
-2. Keep the detected deploy command as `npm run deploy`. Cloudflare provisions the D1 and R2 resources declared in `wrangler.jsonc` and binds the D1 as `img_d1`.
-3. During deployment, `npm run db:init:cloudflare` executes the complete [`database/init.sql`](database/init.sql) against that binding before the Worker is published.
-4. Configure the Worker runtime secrets and open the Admin page:
-
-* `BASIC_USER`: administrator username
-* `BASIC_PASS`: a strong administrator password
-
-The `img_d1` binding points to a single database containing both the complete ImgBed base schema and the Blossom additions:
-
-```text
-img_d1
-├── files
-├── settings
-├── index_operations
-├── index_metadata
-├── other_data
-├── blossom_blobs
-├── blossom_ownership
-└── blossom_allowed_pubkeys
-```
-
-The local [`database/init.sql`](database/init.sql) is the only schema file required for a fresh installation. It already contains the full CloudFlare-ImgBed base schema plus the current Blossom schema; do not fetch or execute an SQL file from the upstream repository first. The deploy script runs it automatically. It is idempotent (`CREATE ... IF NOT EXISTS`) and can be run again without deleting existing rows.
-
-If you connect the repository manually, use `npm run deploy` as the Workers Builds deploy command. Using only `npx wrangler deploy` bypasses database initialization. For recovery or an older deployment, you can still paste `database/init.sql` into the D1 Console or run `npm run db:init:cloudflare` from an authenticated checkout.
-
-For an existing CloudFlare-ImgBed database, keep its existing base tables and data, then apply only the required files in [`database/migrations/`](database/migrations/) to add Blossom tables. Migrations are for upgrades; they are not prerequisites for a fresh install.
-
-If Admin login reports `database_not_configured`, add the D1 binding with the exact variable name `img_d1`. If it reports `database_not_initialized`, the deployment likely bypassed or could not complete the initialization command; run `npm run deploy` again, or run this project's `database/init.sql` in the D1 Console. `GET /api/system/database-status` provides the same safe diagnostic state without returning database IDs or credentials.
-
-## Blossom Support
-
-PR1 adds the first Blossom protocol surface while keeping the original ImgBed UI and APIs intact:
-
-* BUD-11 Nostr authorization using signed kind `24242` events
-* `PUT /upload` (BUD-02)
-* `GET /<sha256>` and `HEAD /<sha256>` (BUD-01)
-* `DELETE /<sha256>` (BUD-12)
-* SHA-256 validation, basic deduplication, and many-to-many pubkey ownership
-
-Set `BLOSSOM_ENABLED=true` to enable these endpoints. By default, BUD-11 events remain usable until their required `expiration` tag; deployments can opt into an additional event-age limit with `BLOSSOM_AUTH_MAX_AGE_SECONDS` (maximum one day). `BLOSSOM_AUTH_FUTURE_SKEW_SECONDS` defaults to `0` to follow BUD-11's requirement that `created_at` be in the past, but can be set up to 300 seconds when controlled clients require clock-skew tolerance.
-
-Authorization headers generated according to current BUD-11 use unpadded Base64URL. The server also accepts the legacy standard Base64 representation used by existing Blossom clients and servers; both forms still undergo the same event signature, expiration, action, hash-scope, and allowlist checks.
-
-Existing D1 installations can apply [`database/migrations/v2.8.0_add_blossom_metadata.sql`](database/migrations/v2.8.0_add_blossom_metadata.sql). Fresh installations receive these tables from `database/init.sql`. Docker/SQLite deployments initialize the complete schema automatically. KV deployments use the isolated `manage@blossom@...` keyspace.
-
-## Blossom Upload Access
-
-Blossom write access is allowlist-only. An administrator must add a Nostr public key on the **Blossom Access** page at `/blossom-access.html` before that key can upload or delete blobs. The page is linked from the existing admin screens and uses the existing ImgBed administrator session; it does not introduce another password or user system.
-
-The admin interface accepts either a 64-character hex public key or an `npub`. Values are decoded and stored as lowercase hex. It never accepts or requests an `nsec` or any other private key.
-
-Access rules are:
-
-* `GET /<sha256>` and `HEAD /<sha256>` remain public.
-* `PUT /upload` requires valid BUD-11 authentication and a pubkey in the allowlist.
-* `DELETE /<sha256>` requires valid BUD-11 authentication, a pubkey in the allowlist, and existing blob ownership.
-* Removing a pubkey only revokes future Blossom write access; it does not delete existing blobs or ownership metadata.
-
-The allowlist admin API is protected by the existing `/api/manage` administrator authentication:
-
-```text
-GET    /api/manage/blossom/pubkeys
-POST   /api/manage/blossom/pubkeys
-DELETE /api/manage/blossom/pubkeys/<pubkey>
-```
-
-Existing D1 installations can also apply [`database/migrations/v2.9.0_add_blossom_allowlist.sql`](database/migrations/v2.9.0_add_blossom_allowlist.sql). Fresh installations receive this table from `database/init.sql`. Docker/SQLite initializes the complete schema automatically. KV deployments use isolated `manage@blossom@allowed-pubkey@...` keys.
-
-## NIP-07 Web Login
-
-The lightweight Blossom upload page is available at `/blossom-upload.html` and requires a NIP-07-compatible browser signer. Login proves control of a Nostr public key by signing a short-lived, domain-bound challenge; the verified pubkey must still exist in the administrator allowlist.
-
-Private keys are never entered into or sent to Blossom ImgBed. Signing stays inside the user's NIP-07 extension. The resulting Web session is stored as a random server-side session token in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie and expires after 24 hours. `/api/blossom/auth/me` checks the allowlist again, so removing a pubkey immediately invalidates its Web access.
-
-Authentication endpoints:
-
-```text
-GET  /api/blossom/auth/challenge
-POST /api/blossom/auth/login
-GET  /api/blossom/auth/me
-POST /api/blossom/auth/logout
-```
-
-Login challenges expire after five minutes by default. `BLOSSOM_LOGIN_CHALLENGE_TTL_SECONDS` may be set from 60 through 600 seconds. Each challenge is deleted after one valid signed use to prevent replay.
-
-Web uploads do not use an internal or session-only upload API. The browser hashes the selected file with Web Crypto, asks the NIP-07 signer to sign the standard kind `24242` BUD-11 upload event, and sends the file to the same `PUT /upload` endpoint used by external Blossom clients. The server independently verifies BUD-11, the allowlist, and the uploaded bytes before invoking the existing ImgBed storage pipeline.
-
-```text
-Browser
-   │
-   │ NIP-07
-   ▼
-Nostr Signature
-   │
-   ▼
-Allowlist Check
-   │
-   ▼
-Web Session
-   │
-   ▼
-BUD-11 Upload
-   │
-   ▼
-PUT /upload
-   │
-   ▼
-Existing ImgBed Storage
-```
-
-The authorization value below is a placeholder for a Base64url-encoded, signed kind `24242` event. Never send an `nsec` or any other private key to the server.
-
-```bash
-sha256="$(sha256sum ./photo.jpg | cut -d ' ' -f 1)"
-
-curl -X PUT "https://blossom.example/upload" \
-  -H "Authorization: Nostr $BUD11_EVENT_BASE64URL" \
-  -H "X-SHA-256: $sha256" \
-  -H "Content-Type: image/jpeg" \
-  --data-binary @./photo.jpg
-
-curl -I "https://blossom.example/$sha256.jpg"
-
-curl -X DELETE "https://blossom.example/$sha256" \
-  -H "Authorization: Nostr $BUD11_DELETE_EVENT_BASE64URL"
-```
+Blossom is a protocol and authorization layer. Files continue to use the existing ImgBed routing, quota, load-balancing, and storage implementations for Cloudflare R2, Telegram, S3-compatible storage, WebDAV, Hugging Face, and Discord.
 
 ## Architecture
 
 ```text
-Nostr Client
-│
-│ BUD-11
-▼
-Blossom ImgBed
-│
-├── Blossom protocol
-├── Nostr authentication
-├── pubkey authorization
-└── existing ImgBed storage layer
-    │
-    ├── Cloudflare R2
-    ├── Telegram
-    ├── S3
-    ├── WebDAV
-    ├── Hugging Face
-    └── Discord
+Public /                         Blossom API
+  └─ project landing page         └─ BUD-11 signature
+       └─ Admin Login                  └─ pubkey allowlist
+            └─ ImgBed Admin                 └─ ImgBed storage engine
+                 └─ Blossom Settings             ├─ R2 / S3
+                      ├─ Enable                   ├─ Telegram / Discord
+                      ├─ Server URL               └─ WebDAV / Hugging Face
+                      └─ Pubkey allowlist
 ```
 
-The Blossom layer will not reimplement any Storage Provider. Future Blossom APIs should reuse the storage, channel-selection, load-balancing, and upload infrastructure already provided by CloudFlare-ImgBed.
+Allowlist membership grants only the right to call signed Blossom write/delete APIs. It does not create a web session, ImgBed user, Admin session, password, or access to `/api/manage/*`.
 
-## Roadmap
+## Fresh install on Cloudflare
 
-### Phase 1
+1. Deploy this repository using the Cloudflare GitHub integration.
+2. Create a Cloudflare D1 database.
+3. Bind the database to the Worker with the binding name `img_d1`.
+4. Run this repository's complete [`database/init.sql`](database/init.sql) in the D1 Console.
+5. Open `/adminLogin` and sign in. When no database or environment credentials exist, the initial credentials are `admin` / `admin`; change them immediately in Security Settings.
+6. Open **System Settings → Blossom**.
+7. Enable Blossom.
+8. Add each allowed Nostr identity as an `npub1…` value or 64-character hex pubkey.
+9. Copy the displayed Server URL into a Blossom-compatible Nostr client.
 
-* Blossom protocol core
-* BUD-11 authentication
-* Nostr pubkey authorization
-* PUT /upload
-* GET /<sha256>
-* HEAD /<sha256>
-* DELETE /<sha256>
+`database/init.sql` is self-contained. A new deployment does not need an upstream CloudFlare-ImgBed SQL file first.
 
-### Phase 2
+### Administrator credential priority
 
-* Pubkey ownership
-* Upload quota
-* Rate limiting
-* Public upload policy
+Credentials resolve in this order:
 
-### Phase 3
+1. Existing database security configuration
+2. `BASIC_USER` / `BASIC_PASS` environment bindings
+3. `admin` / `admin` fresh-install fallback
 
-* Nostr Web login
-* NIP-07
-* User media dashboard
+Passwords retain PBKDF2 storage, legacy SHA-256 and plaintext compatibility, automatic rehashing, password changes, and session invalidation.
 
-### Phase 4
+## Upgrade an existing ImgBed database
 
-* Public Blossom service
-* Abuse protection
-* Moderation
-* Multi-storage health/failover
+Back up the database, then apply the non-destructive Blossom migrations in order:
 
-## Credits
+```text
+database/migrations/v2.8.0_add_blossom_metadata.sql
+database/migrations/v2.9.0_add_blossom_allowlist.sql
+database/migrations/v2.10.0_add_blossom_settings.sql
+```
 
-This project is based on CloudFlare-ImgBed.
+The migrations only add Blossom tables/indexes and the default disabled setting. They do not delete or rewrite existing files, settings, metadata, or storage configuration.
 
-Original project:
-https://github.com/MarSeventh/CloudFlare-ImgBed
+## Using the server
 
-The original MIT [LICENSE](LICENSE) and copyright notice are retained.
+### Administrator
 
-## CloudFlare-ImgBed foundation documentation
+Sign in at `/adminLogin`, then open **System Settings → Blossom** to:
 
-<div align="center">
-    <a href="https://github.com/MarSeventh/CloudFlare-ImgBed"><img width="80%" alt="logo" src="readme/banner.png" /></a>
-    <p><em>🗂️ Beyond image hosting: an all-in-one, open-source file management hub.</em></p>
-    <p>
-        <a href="https://github.com/MarSeventh/CloudFlare-ImgBed/blob/main/README_zh.md">简体中文</a> | <a href="https://github.com/MarSeventh/CloudFlare-ImgBed/blob/main/README.md">English</a> | <a href="https://cfbed.sanyue.de/en">Official Website</a>
-    </p>
-    <p align="center">
-        <a href="https://github.com/MarSeventh/CloudFlare-ImgBed/blob/main/LICENSE"><img src="https://img.shields.io/github/license/MarSeventh/CloudFlare-ImgBed" alt="License" /></a>
-        <a href="https://github.com/MarSeventh/CloudFlare-ImgBed/releases"><img src="https://img.shields.io/github/release/MarSeventh/CloudFlare-ImgBed" alt="latest version" /></a>
-        <a href="https://github.com/MarSeventh/CloudFlare-ImgBed/releases"><img src="https://img.shields.io/github/downloads/MarSeventh/CloudFlare-ImgBed/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
-        <a href="https://hub.docker.com/r/marseventh/cloudflare-imgbed"><img src="https://img.shields.io/docker/pulls/marseventh/cloudflare-imgbed" alt="Docker Pulls" /></a>
-        <a href="https://github.com/MarSeventh/CloudFlare-ImgBed/stargazers"><img src="https://img.shields.io/github/stars/MarSeventh/CloudFlare-ImgBed" alt="Stars" /></a>
-        <a href="https://github.com/MarSeventh/CloudFlare-ImgBed/network/members"><img src="https://img.shields.io/github/forks/MarSeventh/CloudFlare-ImgBed" alt="Forks" /></a>
-        <a href="https://atomgit.com/MarSeventh/CloudFlare-ImgBed"><img src="https://atomgit.com/MarSeventh/CloudFlare-ImgBed/star/badge.svg" alt="G-star" /></a>
-    </p>
-    <p align="center">
-        <a href="https://trendshift.io/repositories/14324" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14324" alt="GitHub Trending" width="250" /></a>
-        <a href="https://hellogithub.com/repository/MarSeventh/CloudFlare-ImgBed" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=71d65ace215945b0909d4c75c31b9fcb&claim_uid=6DsuqF4hInJWerv&theme=neutral" alt="Featured｜HelloGitHub" width="250" /></a>
-    </p>
-</div>
+- enable or disable Blossom write operations;
+- copy the request-derived Server URL;
+- add, inspect, and remove allowed Nostr pubkeys.
 
----
+Disabling Blossom rejects signed `PUT` and `DELETE` operations with `403 {"error":"blossom_disabled"}`. Existing media remains available through `GET` and `HEAD`.
 
-> [!IMPORTANT]
->
-> **If you encounter issues, please check the [announcement](https://github.com/MarSeventh/CloudFlare-ImgBed/discussions/categories/announcements) first. Important notifications and non-compatible updates will be explained in the announcement!**
+### Nostr user
 
+There is no Blossom web login or web upload dashboard. Add the server URL to a compatible Nostr client. The client uses the user's private key to sign each standard BUD-11 request; the server verifies the kind `24242` event, signature, action, expiration, server/hash scope, and pubkey allowlist before invoking ImgBed storage.
 
-# 1. 💡 Introduction
+## Blossom endpoints
 
-CloudFlare ImgBed is a self-hosted image and file hosting solution for Docker and serverless environments, bringing **Telegram**, **Discord**, **Cloudflare R2**, **S3-compatible storage**, **Hugging Face**, **WebDAV**, and more into one management interface. It provides file management, authentication, directory organization, content moderation, a RESTful API, and WebDAV for personal image hosting, website asset management, and lightweight file distribution. **[View all features →](https://cfbed.sanyue.de/en/guide/features.html)**
+```text
+HEAD   /upload
+PUT    /upload
+GET    /<sha256>[.<ext>]
+HEAD   /<sha256>[.<ext>]
+DELETE /<sha256>[.<ext>]
+```
 
-![CloudFlare](readme/海报.png)
+Management endpoints are protected by the existing Admin middleware:
 
-## 🤝 Partners
+```text
+GET    /api/manage/blossom/settings
+POST   /api/manage/blossom/settings
+GET    /api/manage/blossom/pubkeys
+POST   /api/manage/blossom/pubkeys
+DELETE /api/manage/blossom/pubkeys/:pubkey
+```
 
-<table width="100%">
-  <tr>
-    <td align="center" width="20%">
-      <strong><a href="https://www.cloudflare.com/">Cloudflare</a></strong>
-    </td>
-    <td align="center" width="20%">
-      <strong><a href="https://edgeone.ai/?from=github">EdgeOne</a></strong>
-    </td>
-    <td align="center" width="20%">
-      <strong><a href="https://www.hncloud.com/activity/activity_2026summer.html?k=MarSeventh">HuaNa Cloud</a></strong>
-    </td>
-    <td align="center" width="20%">
-      <strong><a href="https://www.svyun.com/recommend/AELZ0UeMz8K11Zg7pEXC">SuWei Cloud</a></strong>
-    </td>
-    <td align="center" width="20%">
-      <strong><a href="https://linux.do/t/topic/2578561">Linux DO</a></strong>
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><a href="https://www.cloudflare.com/"><img src="readme/cloudflare-logo.png" alt="Cloudflare logo" height="25"></a></td>
-    <td align="center"><a href="https://edgeone.ai/?from=github"><img src="readme/edgeone-logo.png" alt="EdgeOne logo" height="25"></a></td>
-    <td align="center"><a href="https://www.hncloud.com/activity/activity_2026summer.html?k=MarSeventh"><img src="readme/hncloud-logo.png" alt="HuaNa Cloud logo" height="25"></a></td>
-    <td align="center"><a href="https://www.svyun.com/recommend/AELZ0UeMz8K11Zg7pEXC"><img src="readme/svyun-logo.png" alt="SuWei Cloud logo" height="25"></a></td>
-    <td align="center"><a href="https://linux.do/t/topic/2578561"><img src="readme/linuxdo-logo.png" alt="Linux DO logo" height="25"></a></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Provides CDN acceleration and security protection</sub></td>
-    <td align="center"><sub>Provides CDN acceleration and security protection</sub></td>
-    <td align="center"><sub>Provides stable and high-quality cloud computing resources</sub></td>
-    <td align="center"><sub>Provides stable and high-quality cloud computing resources</sub></td>
-    <td align="center"><sub>Provides community support</sub></td>
-  </tr>
-</table>
+## Database diagnostics
 
-# 2. 🖥️ Demo
+- Without an `img_d1` binding, Admin Login returns `database_not_configured` and explains that the binding name must be `img_d1`.
+- With an empty/incomplete D1, Admin Login returns `database_not_initialized`, lists only missing table names, and instructs the administrator to run `database/init.sql`.
+- Incorrect credentials return `unauthorized` and remain distinct from database errors.
 
-**Demo Address**: [CloudFlare ImgBed](https://cfbed.1314883.xyz/) · **Access Password**: `cfbed`
+## Development
 
-![Upload Page](readme/upload.png)
+Requires Node.js 20–22.
 
-<details>
-    <summary>Other page screenshots</summary>
+```bash
+npm ci
+npm test
+npm run build
+```
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <strong>Login Page</strong><br>
-      <img src="readme/login.png" alt="Login Page" width="100%">
-    </td>
-    <td align="center" width="50%">
-      <strong>Upload Progress</strong><br>
-      <img src="readme/uploading.png" alt="Upload Progress" width="100%">
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <strong>File Management</strong><br>
-      <img src="readme/dashboard.png" alt="File Management" width="100%">
-    </td>
-    <td align="center" width="50%">
-      <strong>User Management</strong><br>
-      <img src="readme/customer-config.png" alt="User Management" width="100%">
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <strong>Status Page</strong><br>
-      <img src="readme/status-page.png" alt="Status Page" width="100%">
-    </td>
-    <td align="center" width="50%">
-      <strong>Public Gallery</strong><br>
-      <img src="readme/public-gallery.png" alt="Public Gallery" width="100%">
-    </td>
-  </tr>
-</table>
+## License
 
-</details>
-
-# 3. 📚 Documentation & Updates
-
-## 📖 Documentation
-
-The documentation covers deployment, storage configuration, feature usage, RESTful API integration, WebDAV, version upgrades, and troubleshooting. Whether you are deploying the project for the first time or maintaining an existing instance, you can find the relevant instructions here.
-
-**[Read the full documentation →](https://cfbed.sanyue.de/en)**
-
-## 📝 Changelog
-
-Follow the latest features, bug fixes, compatibility changes, and upgrade notes.
-
-[![Recent Updates](https://recent-update.cfbed.sanyue.de/en)](https://cfbed.sanyue.de/en/guide/update-log.html)
-
-# 4. 🌱 Ecosystem
-
-An open-source ecosystem grows through community support. Visit the [CloudFlare ImgBed Ecosystem](https://cfbed.sanyue.de/en/about/ecosystem.html) page to explore the following resources and more:
-
-- **Plugin Extensions**: Browser extensions, integrations for Typecho, WordPress, and Obsidian, OpenList drivers, and more.
-- **Companion Applications**: Desktop clients, bot tools, and more.
-- **AI Agent Applications**: Official project skills and related tools.
-- **Tutorials and Guides**: High-quality videos and articles from content creators.
-
-Discover useful plugins, applications, and tutorials, or share your own work with the community. See the [Ecosystem Call for Contributions](https://github.com/MarSeventh/CloudFlare-ImgBed/discussions/606) for submission guidelines. We look forward to your participation!
-
-# 5. 💝 Support & Sponsors
-
-## ☕ Support the Project
-
-Maintaining an open source project takes time and effort. If CloudFlare ImgBed has helped you, consider supporting its continued development.
-
-<p align="center">
-  <a href="https://afdian.com/a/marseventh"><img src="https://img.shields.io/badge/AFDIAN-946CE6?style=for-the-badge&logo=afdian&logoColor=white" height="36" alt="Support via Afdian"></a>
-  &nbsp;&nbsp;
-  <a href="readme/weixin-reward.png"><img src="https://img.shields.io/badge/WeChat_Pay-07C160?style=for-the-badge&logo=wechat&logoColor=white" height="36" alt="Support via WeChat Pay"></a>
-</p>
-
-## 💖 Sponsors
-
-Thank you to every sponsor who supports this project! Your support helps sustain ongoing maintenance and drives the continued improvement of CloudFlare ImgBed.
-
-[![Sponsors](https://afdian-sponsors.sanyue.de/image?columns=12)](https://afdian.com/a/marseventh)
-
-# 6. 👥 Community
-
-## 🧑‍💻 Contributors
-
-Thank you to everyone who has contributed code, documentation, ideas, and feedback!
-
-[![Contributors](https://contrib.rocks/image?repo=Marseventh/Cloudflare-ImgBed)](https://github.com/MarSeventh/CloudFlare-ImgBed/graphs/contributors)
-
-## ⭐ Star History
-
-**If you find the project useful, please consider giving it a Star ⭐. Thank you for your support!**
-
-<a href="https://github.com/MarSeventh/CloudFlare-ImgBed">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://marseventh.github.io/CloudFlare-ImgBed/star-history-dark.svg" />
-   <source media="(prefers-color-scheme: light)" srcset="https://marseventh.github.io/CloudFlare-ImgBed/star-history-light.svg" />
-   <img alt="Star-History" src="https://marseventh.github.io/CloudFlare-ImgBed/star-history-light.svg" />
- </picture>
-</a>
-
-# 7. ⚖️ License & Related Projects
-
-## 📄 License
-
-> [!IMPORTANT]
-> This project is licensed under the [MIT License](LICENSE). You may use, modify, and distribute it, provided that the original copyright and license notices are retained in all copies or substantial portions of the software.
-
-## 🔗 Related Open Source Projects
-
-- **Web frontend**: [MarSeventh/Sanyue-ImgHub](https://github.com/MarSeventh/Sanyue-ImgHub)
-- **Desktop client**: [MarSeventh/satellite](https://github.com/MarSeventh/satellite)
-- **Upstream project**: [cf-pages/Telegraph-Image](https://github.com/cf-pages/Telegraph-Image)
-
-CloudFlare ImgBed evolved from Telegraph-Image. Thanks to its original authors and contributors.
+See [LICENSE](LICENSE).

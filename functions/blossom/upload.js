@@ -39,12 +39,15 @@ export function createUploadPreflightHandler(dependencies = {}) {
     const deps = {
         authenticate: authenticateBud11,
         isPubkeyAllowed,
+        isEnabled: isBlossomEnabled,
         ...dependencies,
     };
 
     return async function handleUploadPreflight(context) {
         try {
-            if (!isBlossomEnabled(context.env)) throw new BlossomError(404, 'Blossom support is disabled');
+            if (!await deps.isEnabled(context.env)) {
+                return jsonResponse({ error: 'blossom_disabled' }, 403, { 'Cache-Control': 'no-store' });
+            }
 
             const authorizedHash = assertSha256(
                 context.request.headers.get('X-SHA-256'),
@@ -92,12 +95,15 @@ export function createUploadHandler(dependencies = {}) {
         getImgBedRecord,
         uploadViaImgBed,
         isPubkeyAllowed,
+        isEnabled: isBlossomEnabled,
         ...dependencies,
     };
 
     return async function handleUpload(context, processFileUpload) {
         try {
-            if (!isBlossomEnabled(context.env)) throw new BlossomError(404, 'Blossom support is disabled');
+            if (!await deps.isEnabled(context.env)) {
+                return jsonResponse({ error: 'blossom_disabled' }, 403, { 'Cache-Control': 'no-store' });
+            }
 
             const hashHeader = context.request.headers.get('X-SHA-256');
             const authorizedHash = hashHeader === null ? null : assertSha256(

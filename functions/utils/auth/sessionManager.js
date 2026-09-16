@@ -1,7 +1,8 @@
 /**
  * 会话管理工具
  * 使用数据库存储会话，通过 HttpOnly Cookie 传递会话 Token
- * 管理端、用户端和 Blossom Web 使用独立 Cookie。
+ * 管理端和用户端使用独立 Cookie。Blossom protocol requests use a
+ * fresh BUD-11 signature and never create a web session.
  */
 
 import { generateSessionToken } from './passwordHash.js';
@@ -15,24 +16,24 @@ const SESSION_PREFIX = 'manage@session@';
 const COOKIE_NAMES = {
     admin: 'admin_session',
     user: 'user_session',
-    blossom: 'blossom_session',
 };
 
 /**
  * 创建新会话
  * @param {Object} env - 环境变量
- * @param {string} authType - 认证类型 ('admin' | 'user' | 'blossom')
- * @param {string} [username] - 用户名，Blossom scope 使用经过验证的 hex pubkey
+ * @param {string} authType - 认证类型 ('admin' | 'user')
+ * @param {string} [username] - 用户名
  * @returns {Promise<{token: string, cookie: string}>}
  */
 export async function createSession(env, authType, username = '') {
+    if (!Object.hasOwn(COOKIE_NAMES, authType)) {
+        throw new TypeError(`Unsupported session auth type: ${authType}`);
+    }
     // 读取安全策略配置
     const securityConfig = await fetchSecurityConfig(env);
     const accessConfig = securityConfig.access || {};
-    const secure = authType === 'blossom' ? true : (accessConfig.sessionSecure ?? false);
-    const rawMaxAgeDays = authType === 'blossom'
-        ? 1
-        : authType === 'admin'
+    const secure = accessConfig.sessionSecure ?? false;
+    const rawMaxAgeDays = authType === 'admin'
         ? (accessConfig.adminSessionMaxAge ?? 14)
         : (accessConfig.userSessionMaxAge ?? 14);
     const maxAgeDays = normalizeSessionMaxAgeDays(rawMaxAgeDays);
@@ -45,8 +46,7 @@ export async function createSession(env, authType, username = '') {
         createdAt: Date.now(),
         expiresAt: Date.now() + maxAge * 1000,
     };
-    if (authType === 'blossom') sessionData.pubkey = username;
-    else sessionData.username = username;
+    sessionData.username = username;
 
     await db.put(`${SESSION_PREFIX}${token}`, JSON.stringify(sessionData), {
         expirationTtl: maxAge,
@@ -61,7 +61,7 @@ export async function createSession(env, authType, username = '') {
  * 验证会话（按 authType 读取对应的 Cookie）
  * @param {Object} env - 环境变量
  * @param {Request} request - 请求对象
- * @param {string} authType - 要验证的认证类型 ('admin' | 'user' | 'blossom')
+ * @param {string} authType - 要验证的认证类型 ('admin' | 'user')
  * @returns {Promise<{valid: boolean, session?: Object}>}
  */
 export async function validateSession(env, request, authType) {
@@ -120,7 +120,7 @@ export async function validateAnySession(env, request) {
 export async function destroySession(env, request, authType) {
     // 读取安全策略配置
     const securityConfig = await fetchSecurityConfig(env);
-    const secure = authType === 'blossom' ? true : (securityConfig.access?.sessionSecure ?? false);
+    const secure = securityConfig.access?.sessionSecure ?? false;
 
     const db = getDatabase(env);
 
@@ -140,7 +140,7 @@ export async function destroySession(env, request, authType) {
             if (token) {
                 await db.delete(`${SESSION_PREFIX}${token}`);
             }
-            cookies.push(buildSessionCookie(cookieName, '', 0, type === 'blossom' ? true : secure));
+            cookies.push(buildSessionCookie(cookieName, '', 0, secure));
         }
         return cookies;
     }
@@ -149,7 +149,7 @@ export async function destroySession(env, request, authType) {
 /**
  * 按认证类型批量清除会话
  * @param {Object} env - 环境变量
- * @param {string} authType - 要清除的认证类型 ('admin' | 'user' | 'blossom')
+ * @param {string} authType - 要清除的认证类型 ('admin' | 'user')
  * @returns {Promise<number>} 清除的会话数量
  */
 export async function destroySessionsByAuthType(env, authType) {

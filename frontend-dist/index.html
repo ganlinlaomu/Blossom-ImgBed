@@ -1,1 +1,66 @@
-<!doctype html><html lang=""><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><link rel="icon" href="/static/media/logo.png"><link rel="apple-touch-icon" href="/static/media/logo.png"><link rel="mask-icon" href="/static/media/logo.png" color="#f4b400"><link rel="preload" href="/fonts/Pacifico-Regular.dc63ac94.woff2" as="font" type="font/woff2" crossorigin><meta name="description" content="Sanyue ImgHub - A modern file hosting platform"><meta name="keywords" content="Sanyue, ImgHub, file hosting, image hosting, cloud storage"><meta name="author" content="SanyueQi"><title>Sanyue ImgHub</title><script defer="defer" src="/js/chunk-vendors.c0852d4e.js"></script><script defer="defer" src="/js/app.1e4229a6.js?v=d1-initialization"></script><script defer="defer" src="/js/blossom-access-link.js"></script><script defer="defer" src="/js/blossom-upload-link.js"></script><link href="/css/chunk-vendors.f9cd4701.css" rel="stylesheet"><link href="/css/app.966aac8a.css" rel="stylesheet"></head><body><noscript><strong>We're sorry but sanyue_imghub doesn't work properly without JavaScript enabled. Please enable it to continue.</strong></noscript><div id="app"></div></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="A self-hosted Blossom media server for Nostr, powered by the CloudFlare-ImgBed storage engine.">
+  <meta name="keywords" content="Blossom, Nostr, BUD-11, media server, self-hosted">
+  <meta name="author" content="Blossom-ImgBed contributors">
+  <title>Blossom-ImgBed</title>
+  <link rel="icon" href="/static/media/logo.png">
+  <link rel="apple-touch-icon" href="/static/media/logo.png">
+  <link rel="stylesheet" href="/css/landing.css">
+</head>
+<body>
+  <main id="landing" class="landing">
+    <nav class="landing-nav" aria-label="Primary navigation">
+      <a class="brand" href="/" aria-label="Blossom-ImgBed home">
+        <img src="/static/media/logo.png" alt="" width="36" height="36">
+        <span>Blossom-ImgBed</span>
+      </a>
+      <a class="nav-github" href="https://github.com/ganlinlaomu/Blossom-ImgBed" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+    <section class="hero">
+      <p class="eyebrow">Nostr-native media storage</p>
+      <h1>Blossom-ImgBed</h1>
+      <p class="lead">Blossom media server powered by the CloudFlare-ImgBed storage engine.</p>
+      <p class="sublead">A self-hosted Blossom server for Nostr clients, with support for multiple storage backends.</p>
+      <div class="actions">
+        <a class="button primary" href="/adminLogin">Admin Login</a>
+        <a class="button secondary" href="https://github.com/ganlinlaomu/Blossom-ImgBed" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+      </div>
+    </section>
+    <section class="features" aria-label="Features">
+      <article><span class="feature-number">01</span><h2>Blossom / BUD-11</h2><p>Nostr-native authorization. Clients sign each write request with their own key.</p></article>
+      <article><span class="feature-number">02</span><h2>Multiple backends</h2><p>R2, S3, Telegram, WebDAV, Hugging Face, and Discord through the existing ImgBed engine.</p></article>
+      <article><span class="feature-number">03</span><h2>Self-hosted</h2><p>Your server, your storage, and an administrator-controlled Nostr pubkey allowlist.</p></article>
+    </section>
+    <footer><span>Open source · Built for Nostr</span><span>Blossom users connect from compatible clients—no website login required.</span></footer>
+  </main>
+  <div id="app"></div>
+  <noscript><p class="noscript">JavaScript is required for the administrator console.</p></noscript>
+  <script>
+    (() => {
+      if (window.location.pathname === '/') return;
+      document.querySelector('#landing').remove();
+      for (const href of ['/css/chunk-vendors.f9cd4701.css', '/css/app.966aac8a.css', '/css/blossom-admin-settings.css']) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.append(link);
+      }
+      const load = src => new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.body.append(script);
+      });
+      load('/js/chunk-vendors.c0852d4e.js')
+        .then(() => load('/js/app.1e4229a6.js?v=blossom-admin-integration'))
+        .then(() => load('/js/blossom-admin-settings.js'));
+    })();
+  </script>
+</body>
+</html>

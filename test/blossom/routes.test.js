@@ -10,7 +10,14 @@ const PUBKEY_A = '1'.repeat(64);
 const PUBKEY_B = '2'.repeat(64);
 
 function context(request) {
-    return { request, env: { BLOSSOM_ENABLED: 'true' }, data: {}, waitUntil() {} };
+    return {
+        request,
+        env: { img_url: {
+            async get(key) { return key === 'blossom_enabled' ? 'true' : null; },
+            async put() {}, async delete() {}, async list() { return { keys: [], list_complete: true }; },
+        } },
+        data: {}, waitUntil() {},
+    };
 }
 
 async function uploadRequest(bytes, hash, { includeHashHeader = true } = {}) {
@@ -279,19 +286,21 @@ describe('ImgBed regression guards', () => {
         assert.equal(selectConsistentChannel(channels, 'upload-id', true), selectConsistentChannel(channels, 'upload-id', true));
     });
 
-    it('passes non-Blossom and disabled routes through to the existing UI/API', async () => {
+    it('keeps hash reads on the Blossom reader while passing non-hash routes through', async () => {
         let passes = 0;
         const fallback = async () => { passes++; return new Response('legacy'); };
         const disabled = await blossomRootRoute({
             request: new Request(`https://blossom.example/${'a'.repeat(64)}`),
-            env: { BLOSSOM_ENABLED: 'false' }, params: { sha256: 'a'.repeat(64) }, next: fallback,
+            env: context(new Request('https://blossom.example')).env,
+            params: { sha256: 'a'.repeat(64) }, next: fallback,
         });
         const nonHash = await blossomRootRoute({
             request: new Request('https://blossom.example/dashboard'),
-            env: { BLOSSOM_ENABLED: 'true' }, params: { sha256: 'dashboard' }, next: fallback,
+            env: context(new Request('https://blossom.example')).env,
+            params: { sha256: 'dashboard' }, next: fallback,
         });
-        assert.equal(await disabled.text(), 'legacy');
+        assert.equal(disabled.status, 404);
         assert.equal(await nonHash.text(), 'legacy');
-        assert.equal(passes, 2);
+        assert.equal(passes, 1);
     });
 });

@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS blossom_allowed_pubkeys (
     created_at INTEGER NOT NULL
 );
 
+-- Blossom write operations are opt-in. Existing settings are never overwritten.
+INSERT OR IGNORE INTO settings (key, value, category, description)
+VALUES ('blossom_enabled', 'false', 'blossom', 'Enable Blossom BUD-11 write operations');
+
 CREATE INDEX IF NOT EXISTS idx_files_timestamp ON files(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_files_directory ON files(directory);
 CREATE INDEX IF NOT EXISTS idx_files_channel ON files(channel);

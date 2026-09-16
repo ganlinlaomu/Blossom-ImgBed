@@ -21,6 +21,10 @@ const allowlistMigration = readFileSync(
     new URL('../database/migrations/v2.9.0_add_blossom_allowlist.sql', import.meta.url),
     'utf8',
 );
+const settingsMigration = readFileSync(
+    new URL('../database/migrations/v2.10.0_add_blossom_settings.sql', import.meta.url),
+    'utf8',
+);
 
 function loginRequest(username = 'admin', password = 'secret') {
     return new Request('https://img.example/api/auth/adminLogin', {
@@ -107,6 +111,18 @@ describe('D1 initialization diagnostics', () => {
         assert.match(response.headers.get('Set-Cookie'), /^admin_session=/);
     });
 
+    it('uses admin/admin only as the final fresh-install credential fallback', async () => {
+        const env = initializedEnv({ BASIC_USER: undefined, BASIC_PASS: undefined });
+        assert.equal((await adminLogin({ env, request: loginRequest('admin', 'admin') })).status, 200);
+        assert.equal((await adminLogin({ env, request: loginRequest('admin', 'wrong') })).status, 401);
+
+        await getDatabase(env).put('manage@sysConfig@security', JSON.stringify({
+            auth: { admin: { adminUsername: 'stored', adminPassword: 'stored-pass' } },
+        }));
+        assert.equal((await adminLogin({ env, request: loginRequest('stored', 'stored-pass') })).status, 200);
+        assert.equal((await adminLogin({ env, request: loginRequest('admin', 'admin') })).status, 401);
+    });
+
     it('keeps incorrect admin credentials distinct from database errors', async () => {
         const env = initializedEnv();
         const response = await adminLogin({ env, request: loginRequest('admin', 'wrong') });
@@ -128,11 +144,16 @@ describe('D1 initialization diagnostics', () => {
 
         img_d1.exec(metadataMigration);
         img_d1.exec(allowlistMigration);
+        // The real ImgBed settings schema includes these columns. Add them to
+        // this minimal legacy fixture before applying the settings migration.
+        img_d1.exec('ALTER TABLE settings ADD COLUMN category TEXT; ALTER TABLE settings ADD COLUMN description TEXT;');
+        img_d1.exec(settingsMigration);
 
         const preserved = await img_d1.prepare(
             "SELECT value FROM files WHERE id = 'existing-file'"
         ).first();
         assert.equal(preserved.value, 'value');
+        assert.equal((await img_d1.prepare("SELECT value FROM settings WHERE key = 'blossom_enabled'").first()).value, 'false');
         assert.equal((await checkDatabaseInitialization({ img_d1 })).initialized, true);
     });
 

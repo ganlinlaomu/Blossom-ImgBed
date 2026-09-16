@@ -19,12 +19,15 @@ export function createDeleteHandler(dependencies = {}) {
         deleteBlob,
         deleteViaImgBed,
         isPubkeyAllowed,
+        isEnabled: isBlossomEnabled,
         ...dependencies,
     };
 
     return async function handleDelete(context, sha256) {
         try {
-            if (!isBlossomEnabled(context.env)) throw new BlossomError(404, 'Blossom support is disabled');
+            if (!await deps.isEnabled(context.env)) {
+                return jsonResponse({ error: 'blossom_disabled' }, 403, { 'Cache-Control': 'no-store' });
+            }
             assertSha256(sha256);
             const { pubkey } = deps.authenticate(context.request, context.env, {
                 action: 'delete', sha256, requireHash: true,
