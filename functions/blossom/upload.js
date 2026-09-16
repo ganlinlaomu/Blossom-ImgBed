@@ -99,12 +99,14 @@ export function createUploadHandler(dependencies = {}) {
         try {
             if (!isBlossomEnabled(context.env)) throw new BlossomError(404, 'Blossom support is disabled');
 
-            const authorizedHash = assertSha256(
-                context.request.headers.get('X-SHA-256'),
-                'PUT /upload requires a lowercase X-SHA-256 header'
+            const hashHeader = context.request.headers.get('X-SHA-256');
+            const authorizedHash = hashHeader === null ? null : assertSha256(
+                hashHeader,
+                'PUT /upload X-SHA-256 header must be a lowercase SHA-256 hash'
             );
-            const { pubkey } = deps.authenticate(context.request, context.env, {
-                action: 'upload', sha256: authorizedHash, requireHash: true,
+            const { event, pubkey } = deps.authenticate(context.request, context.env, {
+                action: 'upload',
+                ...(authorizedHash ? { sha256: authorizedHash, requireHash: true } : { requireHash: false }),
             });
             if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
                 return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
@@ -114,8 +116,16 @@ export function createUploadHandler(dependencies = {}) {
 
             const type = normalizeMimeType(context.request.headers.get('Content-Type'));
             const body = await deps.readAndHash(context.request);
-            if (body.sha256 !== authorizedHash) {
+            if (authorizedHash && body.sha256 !== authorizedHash) {
                 throw new BlossomError(409, 'X-SHA-256 and BUD-11 hash do not match the uploaded blob');
+            }
+            if (!authorizedHash) {
+                const signedHashes = event.tags
+                    .filter(tag => tag[0] === 'x')
+                    .map(tag => tag[1]);
+                if (!signedHashes.includes(body.sha256)) {
+                    throw new BlossomError(401, 'Nostr authorization does not cover the uploaded blob hash');
+                }
             }
             if (declaredLength !== null && declaredLength !== body.size) {
                 throw new BlossomError(400, 'Content-Length does not match the uploaded blob');

@@ -13,10 +13,13 @@ function context(request) {
     return { request, env: { BLOSSOM_ENABLED: 'true' }, data: {}, waitUntil() {} };
 }
 
-async function uploadRequest(bytes, hash) {
+async function uploadRequest(bytes, hash, { includeHashHeader = true } = {}) {
     return new Request('https://blossom.example/upload', {
         method: 'PUT',
-        headers: { 'X-SHA-256': hash, 'Content-Type': 'text/plain' },
+        headers: {
+            ...(includeHashHeader ? { 'X-SHA-256': hash } : {}),
+            'Content-Type': 'text/plain',
+        },
         body: bytes,
     });
 }
@@ -101,6 +104,55 @@ describe('Blossom upload', () => {
         assert.equal(storedBlob.sha256, hash);
         assert.deepEqual(ownership, [hash, PUBKEY_A]);
         assert.deepEqual(Object.keys(descriptor), ['url', 'sha256', 'size', 'type', 'uploaded']);
+    });
+
+    it('accepts PUT without X-SHA-256 when the signed x tag covers the body hash', async () => {
+        const bytes = new TextEncoder().encode('client omits the redundant hash header');
+        const hash = await sha256Hex(bytes);
+        let authOptions;
+        let pipelineCalls = 0;
+        const handler = createUploadHandler({
+            authenticate: (_request, _env, options) => {
+                authOptions = options;
+                return { pubkey: PUBKEY_A, event: { tags: [['x', hash]] } };
+            },
+            isPubkeyAllowed: async () => true,
+            getBlob: async () => null,
+            putBlob: async () => {},
+            addOwnership: async () => {},
+            uploadViaImgBed: async () => {
+                pipelineCalls++;
+                return `blossom/${hash}.txt`;
+            },
+        });
+
+        const response = await handler(
+            context(await uploadRequest(bytes, hash, { includeHashHeader: false })),
+            () => {}
+        );
+
+        assert.equal(response.status, 201);
+        assert.deepEqual(authOptions, { action: 'upload', requireHash: false });
+        assert.equal(pipelineCalls, 1);
+    });
+
+    it('rejects PUT without X-SHA-256 when the signed x tag does not cover the body', async () => {
+        const bytes = new TextEncoder().encode('body hash is not authorized');
+        let pipelineCalls = 0;
+        const handler = createUploadHandler({
+            authenticate: () => ({ pubkey: PUBKEY_A, event: { tags: [['x', 'c'.repeat(64)]] } }),
+            isPubkeyAllowed: async () => true,
+            uploadViaImgBed: async () => { pipelineCalls++; },
+        });
+
+        const response = await handler(
+            context(await uploadRequest(bytes, 'c'.repeat(64), { includeHashHeader: false })),
+            () => {}
+        );
+
+        assert.equal(response.status, 401);
+        assert.equal(response.headers.get('X-Reason'), 'Nostr authorization does not cover the uploaded blob hash');
+        assert.equal(pipelineCalls, 0);
     });
 
     it('rejects a body hash mismatch before the ImgBed pipeline is called', async () => {
