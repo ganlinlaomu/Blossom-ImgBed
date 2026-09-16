@@ -31,7 +31,7 @@ Allowlist membership grants only the right to call signed Blossom write/delete A
 3. Bind the database to the Worker with the binding name `img_d1`.
 4. Run this repository's complete [`database/init.sql`](database/init.sql) in the D1 Console.
 5. Open `/adminLogin` and sign in. When no database or environment credentials exist, the initial credentials are `admin` / `admin`; change them immediately in Security Settings.
-6. Open **System Settings → Blossom**.
+6. Open **User Management → Nostr Allowlist**.
 7. Enable Blossom.
 8. Add each allowed Nostr identity as an `npub1…` value or 64-character hex pubkey.
 9. Copy the displayed Server URL into a Blossom-compatible Nostr client.
@@ -64,7 +64,7 @@ The migrations only add Blossom tables/indexes and the default disabled setting.
 
 ### Administrator
 
-Sign in at `/adminLogin`, then open **System Settings → Blossom** to:
+Sign in at `/adminLogin`, then open **User Management → Nostr Allowlist** to:
 
 - enable or disable Blossom write operations;
 - copy the request-derived Server URL;

@@ -36,14 +36,18 @@
 .blossom-message { min-height: 20px; margin: 8px 2px; font-size: 13px; }
 .blossom-message.success { color: var(--el-color-success, #67c23a); }
 .blossom-message.error { color: var(--el-color-danger, #f56c6c); }
-.blossom-menu-icon { width: 1em; margin-right: 12px; text-align: center; }
 .blossom-admin-shortcut { display: inline-flex; align-items: center; min-height: 32px; margin-right: 14px; padding: 0 12px; border: 1px solid var(--el-color-primary, #409eff); border-radius: 999px; color: var(--el-color-primary, #409eff); font-size: 13px; font-weight: 650; text-decoration: none; }
 .blossom-admin-shortcut:hover { background: var(--el-color-primary, #409eff); color: #fff; }
+.blossom-user-management-tabs { position: relative; z-index: 2; display: flex; width: min(920px, calc(100% - 36px)); margin: 82px auto 0; padding: 4px; border: 1px solid var(--el-border-color-lighter, #ebeef5); border-radius: 10px; background: var(--el-bg-color, #fff); }
+.blossom-user-management-tabs a { flex: 1; padding: 10px 14px; border-radius: 7px; color: var(--el-text-color-secondary, #909399); font-size: 13px; font-weight: 650; text-align: center; text-decoration: none; }
+.blossom-user-management-tabs a.is-active { background: var(--el-color-primary, #409eff); color: #fff; }
+.blossom-user-management-tabs + .main-container { margin-top: 18px; }
 @media (max-width: 720px) {
   .blossom-settings-inner { width: min(100% - 20px, 920px); padding-top: 22px; }
   .blossom-heading { display: block; }
   .blossom-heading > p { margin-top: 12px; }
   .blossom-card { padding: 18px; }
+  .blossom-user-management-tabs { width: min(100% - 20px, 920px); margin-top: 104px; }
   .blossom-add-form { grid-template-columns: 1fr; }
   .blossom-add-form .blossom-button { width: 100%; }
 }

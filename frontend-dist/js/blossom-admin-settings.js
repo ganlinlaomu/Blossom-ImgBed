@@ -89,7 +89,7 @@
     const panel = document.createElement('main');
     panel.id = 'blossom-settings';
     panel.className = 'main-container blossom-settings-panel';
-    panel.setAttribute('data-v-7e9e1ae0', '');
+    panel.setAttribute('data-v-1614f9a2', '');
     panel.innerHTML = `
       <div class="blossom-settings-inner">
         <div class="blossom-heading">
@@ -175,27 +175,25 @@
       shortcut = document.createElement('a');
       shortcut.id = 'blossom-admin-shortcut';
       shortcut.className = 'blossom-admin-shortcut';
-      shortcut.href = '/systemConfig#blossom';
+      shortcut.href = '/customerConfig#blossom';
       shortcut.textContent = 'Blossom';
       shortcut.title = 'Blossom Settings and Nostr pubkey allowlist';
       headerAction.prepend(shortcut);
     }
 
-    if (window.location.pathname !== '/systemConfig') return;
+    if (window.location.pathname !== '/customerConfig') return;
     const container = document.querySelector('.container');
-    const menu = document.querySelector('.sidebar-container .menu-list');
-    if (!container || !menu) return;
+    const userManagement = container?.querySelector(':scope > .main-container:not(.blossom-settings-panel)');
+    if (!container || !userManagement) return;
 
-    let menuItem = document.querySelector('#blossom-settings-menu');
-    if (!menuItem) {
-      menuItem = document.createElement('div');
-      menuItem.id = 'blossom-settings-menu';
-      menuItem.className = 'menu-item blossom-menu-item';
-      menuItem.innerHTML = '<span class="blossom-menu-icon">✦</span><span class="menu-text">Blossom</span>';
-      menuItem.setAttribute('data-v-418ec867', '');
-      for (const child of menuItem.children) child.setAttribute('data-v-418ec867', '');
-      menuItem.addEventListener('click', () => { window.location.hash = 'blossom'; });
-      menu.append(menuItem);
+    let tabs = document.querySelector('#blossom-user-management-tabs');
+    if (!tabs) {
+      tabs = document.createElement('nav');
+      tabs.id = 'blossom-user-management-tabs';
+      tabs.className = 'blossom-user-management-tabs';
+      tabs.setAttribute('aria-label', 'User management sections');
+      tabs.innerHTML = '<a href="/customerConfig">ImgBed Users</a><a href="/customerConfig#blossom">Nostr Allowlist</a>';
+      container.insertBefore(tabs, userManagement);
     }
 
     let panel = document.querySelector('#blossom-settings');
@@ -204,9 +202,11 @@
       container.append(panel);
     }
     const active = window.location.hash === '#blossom';
-    menuItem.classList.toggle('is-active', active);
+    const tabLinks = tabs.querySelectorAll('a');
+    tabLinks[0].classList.toggle('is-active', !active);
+    tabLinks[1].classList.toggle('is-active', active);
     panel.hidden = !active;
-    for (const main of container.querySelectorAll('.main-container:not(.blossom-settings-panel)')) main.hidden = active;
+    userManagement.hidden = active;
     if (active && panel.dataset.loaded !== 'true') {
       panel.dataset.loaded = 'true';
       loadSettings();
