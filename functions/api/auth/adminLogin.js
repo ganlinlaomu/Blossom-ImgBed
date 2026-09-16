@@ -1,12 +1,36 @@
 import { fetchSecurityConfig } from "../../utils/sysConfig.js";
 import { verifyPassword, rehashIfNeeded } from "../../utils/auth/passwordHash.js";
 import { createSession } from "../../utils/auth/sessionManager.js";
-import { getDatabase } from "../../utils/databaseAdapter.js";
+import { checkDatabaseInitialization, getDatabase } from "../../utils/databaseAdapter.js";
+
+const JSON_HEADERS = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+};
+
+function json(value, status) {
+    return new Response(JSON.stringify(value), { status, headers: JSON_HEADERS });
+}
 
 export async function onRequestPost(context) {
     const { request, env } = context;
 
     const { username, password } = await request.json();
+
+    const database = await checkDatabaseInitialization(env);
+    if (!database.configured) {
+        return json({
+            error: 'database_not_configured',
+            message: 'D1 database is not configured. Bind a D1 database to "img_d1".',
+        }, 503);
+    }
+    if (!database.initialized) {
+        return json({
+            error: 'database_not_initialized',
+            message: 'D1 database is empty or incomplete. Run database/init.sql.',
+            missingTables: database.missingTables,
+        }, 503);
+    }
 
     // 读取安全设置
     let securityConfig;
@@ -14,10 +38,10 @@ export async function onRequestPost(context) {
         securityConfig = await fetchSecurityConfig(env, { throwOnError: true });
     } catch (error) {
         console.error('Admin login blocked because security config could not be loaded:', error);
-        return new Response(JSON.stringify({ error: 'Security config unavailable' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' },
-        });
+        return json({
+            error: 'database_unavailable',
+            message: 'Database configuration could not be read.',
+        }, 503);
     }
     const adminUsername = securityConfig.auth.admin.adminUsername;
     const adminPassword = securityConfig.auth.admin.adminPassword;
@@ -40,20 +64,14 @@ export async function onRequestPost(context) {
 
     // 如果设置了用户名，则验证用户名
     if (usernameConfigured && username !== adminUsername) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' },
-        });
+        return json({ error: 'unauthorized' }, 401);
     }
 
     // 如果设置了密码，则验证密码
     if (passwordConfigured) {
         const passwordMatch = await verifyPassword(password, adminPassword);
         if (!passwordMatch) {
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-                status: 401,
-                headers: { 'Content-Type': 'application/json' },
-            });
+            return json({ error: 'unauthorized' }, 401);
         }
 
         // 登录成功后，自动升级旧版哈希为 PBKDF2

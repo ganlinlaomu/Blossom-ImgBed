@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node deploy/worker/generate-routes.js",
     "db:init:cloudflare": "npx wrangler d1 execute img_d1 --remote --file=database/init.sql",
-    "deploy": "npm run build && npm run db:init:cloudflare && npx wrangler deploy",
+    "deploy": "npm run build && npx wrangler deploy",
     "ci-test": "concurrently --kill-others \"npm start\" \"wait-on http://localhost:8080 && mocha\"",
     "ci-test:docker": "concurrently --kill-others \"npm run start:docker\" \"wait-on http://localhost:8080 && mocha\"",
     "test": "node --import ./deploy/server/register.mjs ./node_modules/mocha/bin/mocha \"test/**/*.test.js\"",

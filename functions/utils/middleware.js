@@ -119,16 +119,21 @@ export async function checkDatabaseConfig(context) {
   var dbConfig = checkDbConfig(env);
 
   if (!dbConfig.configured) {
+    const pathname = new URL(context.request.url).pathname;
+    if (pathname === '/api/system/database-status') {
+      return await context.next();
+    }
+
     return new Response(
       JSON.stringify({
-        success: false,
-        error: "数据库未配置 / Database not configured",
-        message: "请配置 KV 存储 (env.img_url) 或 D1 数据库 (env.img_d1)。 / Please configure KV storage (env.img_url) or D1 database (env.img_d1)."
+        error: 'database_not_configured',
+        message: 'D1 database is not configured. Bind a D1 database to "img_d1".'
       }),
       {
-        status: 500,
+        status: 503,
         headers: {
-          "Content-Type": "application/json"
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store'
         }
       }
     );
