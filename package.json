@@ -8,14 +8,14 @@
   ],
   "scripts": {
     "build": "node deploy/worker/generate-routes.js",
-    "db:init:cloudflare": "npx wrangler d1 execute img_d1 --remote --file=database/init.sql",
-    "deploy": "npm run build && npm run db:init:cloudflare && npx wrangler deploy",
+    "deploy": "npm run deploy:cloudflare",
+    "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs",
     "ci-test": "concurrently --kill-others \"npm start\" \"wait-on http://localhost:8080 && mocha\"",
     "ci-test:docker": "concurrently --kill-others \"npm run start:docker\" \"wait-on http://localhost:8080 && mocha\"",
     "test": "node --import ./deploy/server/register.mjs ./node_modules/mocha/bin/mocha \"test/**/*.test.js\"",
     "start": "npx wrangler pages dev ./frontend-dist --kv \"img_url\" --r2 \"img_r2\" --ip 0.0.0.0 --port 8080 --persist-to ./data",
     "start:docker": "node --import ./deploy/server/register.mjs deploy/server/index.js",
-    "deploy:worker": "node deploy/worker/generate-routes.js && npx wrangler deploy --config deploy/worker/wrangler.toml"
+    "deploy:worker": "npm run deploy:cloudflare"
   },
   "overrides": {
     "fast-xml-parser": "^5.3.6"
