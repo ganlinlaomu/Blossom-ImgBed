@@ -3,11 +3,16 @@
   "version": "2.7.6",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=20 <23"
+  },
   "workspaces": [
     "deploy/profiles/*"
   ],
   "scripts": {
     "build": "node deploy/worker/generate-routes.js",
+    "check:workerd": "node scripts/check-workerd-platform.mjs",
     "deploy": "npm run deploy:cloudflare",
     "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs",
     "ci-test": "concurrently --kill-others \"npm start\" \"wait-on http://localhost:8080 && mocha\"",
@@ -38,9 +43,8 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "miniflare": "^4.20260708.1",
     "mocha": "^8.1.3",
     "wait-on": "^7.2.0",
-    "wrangler": "^4.24.0"
+    "wrangler": "4.110.0"
   }
 }

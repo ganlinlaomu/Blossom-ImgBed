@@ -41,18 +41,29 @@ The public [`wrangler.jsonc`](wrangler.jsonc) contains only resource names and b
 Install dependencies, authenticate Wrangler, and run the same command used by one-click deployment:
 
 ```bash
-npm ci
+npm ci --include=optional
 npx wrangler login
 npm run deploy:cloudflare
 ```
 
 CI can use `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` instead of `wrangler login`. Optional `WORKER_NAME`, `D1_DATABASE_NAME`, and `R2_BUCKET_NAME` environment variables override the public template's resource names. For a manual installation, set administrator credentials after deployment with `npx wrangler secret put BASIC_USER` and `npx wrangler secret put BASIC_PASS`; the one-click setup prompts for them.
 
+Cloudflare Builds should use Node.js 22 and the following settings:
+
+```text
+Build command:  npm ci --include=optional && npm run build
+Deploy command: npm run deploy:cloudflare
+NODE_VERSION:   22
+```
+
+Do not set `NPM_CONFIG_OMIT=optional` or `NPM_CONFIG_OPTIONAL=false`. Wrangler's `workerd` runtime uses an optional package selected for the build machine's operating system and CPU. The deploy command verifies that the matching executable exists before it touches D1, R2, or the Worker. A raw `npx wrangler deploy` is not recommended here because it bypasses Blossom ImgBed's D1/R2 bootstrapper.
+
 ### Cloudflare deployment troubleshooting
 
 * `D1 binding ... 00000000-0000-0000-0000-000000000000 ... not found (10181)` means an obsolete revision was deployed. Pull the current branch and use `npm run deploy:cloudflare`; do not run a raw `wrangler deploy` against the old placeholder config.
 * `Cloudflare authorization missing` means Wrangler cannot access the target account. Run `npx wrangler login`, or verify `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in CI.
 * D1 or R2 permission errors require a token with Workers Scripts, D1, and R2 edit access.
+* `workerd platform binary is missing` means the build omitted platform-specific optional dependencies. Remove `NPM_CONFIG_OMIT=optional` and `NPM_CONFIG_OPTIONAL=false`, select Node.js 22, and reinstall with `npm ci --include=optional`.
 * If resource creation fails, deployment stops before schema initialization and Worker upload. Fix the reported permission or account error and rerun the same command; existing resources are safely reused.
 
 ## Blossom Support

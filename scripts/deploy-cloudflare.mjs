@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { verifyWorkerdPlatform } from './check-workerd-platform.mjs';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const templatePath = resolve(projectRoot, 'wrangler.jsonc');
@@ -231,6 +232,8 @@ export async function deployCloudflare(options = {}) {
 
 async function main() {
     try {
+        const workerd = verifyWorkerdPlatform();
+        console.log(`workerd platform binary: ${workerd.expectedPackage}`);
         await deployCloudflare();
     } catch (error) {
         console.error(`\n部署已停止 / Deployment stopped:\n${error.message}`);
