@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createUploadHandler } from '../../functions/blossom/upload.js';
+import { createUploadHandler, createUploadPreflightHandler } from '../../functions/blossom/upload.js';
 import { createBlobHandler } from '../../functions/blossom/blob.js';
 import { createDeleteHandler } from '../../functions/blossom/delete.js';
 import { sha256Hex } from '../../functions/blossom/hash.js';
@@ -22,6 +22,58 @@ async function uploadRequest(bytes, hash) {
 }
 
 describe('Blossom upload', () => {
+    it('accepts an authorized BUD-06 HEAD /upload preflight', async () => {
+        const hash = 'a'.repeat(64);
+        let authOptions;
+        const handler = createUploadPreflightHandler({
+            authenticate: (_request, _env, options) => {
+                authOptions = options;
+                return { pubkey: PUBKEY_A };
+            },
+            isPubkeyAllowed: async () => true,
+        });
+        const response = await handler(context(new Request('https://blossom.example/upload', {
+            method: 'HEAD',
+            headers: {
+                'X-SHA-256': hash,
+                'X-Content-Type': 'image/png',
+                'X-Content-Length': '1234',
+            },
+        })));
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(authOptions, { action: 'upload', sha256: hash, requireHash: true });
+        assert.equal(response.headers.get('Access-Control-Expose-Headers'), 'X-Reason');
+    });
+
+    it('rejects malformed BUD-06 preflight metadata and non-allowlisted pubkeys', async () => {
+        const hash = 'b'.repeat(64);
+        const allowed = createUploadPreflightHandler({
+            authenticate: () => ({ pubkey: PUBKEY_A }),
+            isPubkeyAllowed: async () => true,
+        });
+        const missingLength = await allowed(context(new Request('https://blossom.example/upload', {
+            method: 'HEAD',
+            headers: { 'X-SHA-256': hash, 'X-Content-Type': 'image/png' },
+        })));
+        assert.equal(missingLength.status, 411);
+
+        const denied = createUploadPreflightHandler({
+            authenticate: () => ({ pubkey: PUBKEY_B }),
+            isPubkeyAllowed: async () => false,
+        });
+        const deniedResponse = await denied(context(new Request('https://blossom.example/upload', {
+            method: 'HEAD',
+            headers: {
+                'X-SHA-256': hash,
+                'X-Content-Type': 'image/png',
+                'X-Content-Length': '1234',
+            },
+        })));
+        assert.equal(deniedResponse.status, 403);
+        assert.deepEqual(await deniedResponse.json(), { error: 'pubkey_not_allowed' });
+    });
+
     it('uploads an authorized blob through the existing ImgBed pipeline', async () => {
         const bytes = new TextEncoder().encode('hello blossom');
         const hash = await sha256Hex(bytes);
