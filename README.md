@@ -12,18 +12,20 @@ The initial Blossom core is implemented as an additive protocol layer. It reuses
 
 ## Deploy to Cloudflare
 
-Click the button above to open Cloudflare's guided deployment page. Cloudflare clones this public repository into your GitHub or GitLab account, lets you choose the repository, Worker, D1, and R2 names, automatically provisions the resources, initializes the database, builds the Worker, and deploys the frontend and APIs.
+Click the button above to open Cloudflare's guided deployment page. Cloudflare clones this public repository and runs the repository's `npm run deploy` command. The deployment bootstrapper creates or reuses the account's D1 database and R2 bucket, writes their account-specific values to an ignored temporary Wrangler configuration, initializes the database, and only then deploys the frontend and APIs.
 
 The setup page asks for these Worker secrets:
 
 * `BASIC_USER`: administrator username
 * `BASIC_PASS`: a strong administrator password
 
-The deployment template enables Blossom and provisions:
+The deployment template enables Blossom and uses:
 
-* D1 binding `img_d1` for ImgBed metadata, Blossom ownership, allowlist, challenges, and sessions
-* R2 binding `img_r2` for object storage
+* D1 database `blossom-imgbed-db`, bound as `img_d1`, for ImgBed metadata, Blossom ownership, allowlist, challenges, and sessions
+* R2 bucket `blossom-imgbed-storage`, bound as `img_r2`, for object storage
 * the existing Cloudflare Images binding and static frontend assets
+
+The install order is deterministic: query or create D1, obtain its real UUID, query or create R2, generate `.wrangler/generated/wrangler.deploy.json`, generate the Worker routes, apply the idempotent [`database/init.sql`](database/init.sql), and deploy the Worker. Re-running the deployment reuses the named resources and does not delete existing database rows or uploaded objects.
 
 After deployment:
 
@@ -32,7 +34,26 @@ After deployment:
 3. Open `/blossom-upload.html` with a NIP-07 signer, or use any standard Blossom client.
 4. Configure another existing ImgBed storage provider in the administrator console only if you do not want to use the provisioned R2 backend.
 
-The one-click flow uses the root [`wrangler.jsonc`](wrangler.jsonc). `npm run deploy` regenerates the Worker routes, runs the idempotent [`database/init.sql`](database/init.sql) against the provisioned D1 binding, and deploys the Worker. No Cloudflare API token is stored in this repository.
+The public [`wrangler.jsonc`](wrangler.jsonc) contains only resource names and binding names. It never contains an account-specific D1 UUID, Cloudflare API token, account ID, or application secret.
+
+### Manual Cloudflare deployment
+
+Install dependencies, authenticate Wrangler, and run the same command used by one-click deployment:
+
+```bash
+npm ci
+npx wrangler login
+npm run deploy:cloudflare
+```
+
+CI can use `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` instead of `wrangler login`. Optional `WORKER_NAME`, `D1_DATABASE_NAME`, and `R2_BUCKET_NAME` environment variables override the public template's resource names. For a manual installation, set administrator credentials after deployment with `npx wrangler secret put BASIC_USER` and `npx wrangler secret put BASIC_PASS`; the one-click setup prompts for them.
+
+### Cloudflare deployment troubleshooting
+
+* `D1 binding ... 00000000-0000-0000-0000-000000000000 ... not found (10181)` means an obsolete revision was deployed. Pull the current branch and use `npm run deploy:cloudflare`; do not run a raw `wrangler deploy` against the old placeholder config.
+* `Cloudflare authorization missing` means Wrangler cannot access the target account. Run `npx wrangler login`, or verify `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in CI.
+* D1 or R2 permission errors require a token with Workers Scripts, D1, and R2 edit access.
+* If resource creation fails, deployment stops before schema initialization and Worker upload. Fix the reported permission or account error and rerun the same command; existing resources are safely reused.
 
 ## Blossom Support
 

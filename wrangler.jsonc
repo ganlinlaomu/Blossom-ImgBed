@@ -21,8 +21,7 @@
   "d1_databases": [
     {
       "binding": "img_d1",
-      "database_name": "blossom-imgbed-db",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_name": "blossom-imgbed-db"
     }
   ],
   "r2_buckets": [
