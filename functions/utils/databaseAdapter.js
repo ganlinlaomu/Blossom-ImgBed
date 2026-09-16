@@ -93,6 +93,9 @@ class KVAdapter {
     }
 
     async putSetting(key, value, options) {
+        if (typeof options === 'string') {
+            options = { metadata: { category: options } };
+        }
         return await this.put(key, value, options);
     }
 

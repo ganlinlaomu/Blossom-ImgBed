@@ -1,4 +1,3 @@
-import { isBlossomEnabled } from './blossom/auth.js';
 import { handleBlossomBlob } from './blossom/blob.js';
 import { handleBlossomDelete } from './blossom/delete.js';
 import { optionsResponse } from './blossom/errors.js';
@@ -16,7 +15,7 @@ async function passThrough(context) {
 
 export async function onRequest(context) {
     const hash = parseHashParam(context);
-    if (!hash || !isBlossomEnabled(context.env)) return passThrough(context);
+    if (!hash) return passThrough(context);
 
     switch (context.request.method) {
         case 'GET':

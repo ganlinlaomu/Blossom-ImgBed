@@ -1,4 +1,3 @@
-import { isBlossomEnabled } from './auth.js';
 import { BlossomError, blossomHeaders, errorResponse } from './errors.js';
 import { assertSha256 } from './hash.js';
 import { getBlob } from './metadata.js';
@@ -23,7 +22,6 @@ export function createBlobHandler(dependencies = {}) {
     const deps = { getBlob, readViaImgBed, ...dependencies };
     return async function handleBlob(context, sha256) {
         try {
-            if (!isBlossomEnabled(context.env)) throw new BlossomError(404, 'Blossom support is disabled');
             assertSha256(sha256);
             const blob = await deps.getBlob(context.env, sha256);
             if (!blob) throw new BlossomError(404, 'Blob not found');

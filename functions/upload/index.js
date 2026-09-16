@@ -13,19 +13,19 @@ import { HuggingFaceAPI } from "../utils/storage/huggingfaceAPI";
 import { WebDAVAPI } from "../utils/storage/webdavAPI";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getDatabase } from '../utils/databaseAdapter.js';
-import { isBlossomEnabled } from '../blossom/auth.js';
 import { handleBlossomUpload, handleBlossomUploadPreflight } from '../blossom/upload.js';
 
 
 export async function onRequest(context) {  // Contents of context object
     const { request, env, params, waitUntil, next, data } = context;
 
-    // Blossom is additive: BUD-06 preflight and enabled PUT requests use the
-    // Blossom pipeline. All other methods retain the legacy ImgBed behavior.
-    if (request.method === 'HEAD' && isBlossomEnabled(env)) {
+    // Reserve BUD-06/BUD-11 methods for the Blossom pipeline even while the
+    // persisted switch is off, so a disabled PUT can never fall through to
+    // the legacy ImgBed upload path.
+    if (request.method === 'HEAD') {
         return handleBlossomUploadPreflight(context);
     }
-    if (request.method === 'PUT' && isBlossomEnabled(env)) {
+    if (request.method === 'PUT') {
         return handleBlossomUpload(context, processFileUpload);
     }
 

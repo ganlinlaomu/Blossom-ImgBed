@@ -1,6 +1,7 @@
 import { BlossomError } from './errors.js';
 import { verifyAuthorizationEvent } from './event.js';
 import { SHA256_PATTERN } from './types.js';
+import { getBlossomSettings } from './settings.js';
 
 // BUD-11 already bounds a token's lifetime with its required expiration tag.
 // A separate age limit is opt-in because clients may legitimately cache and
@@ -8,9 +9,8 @@ import { SHA256_PATTERN } from './types.js';
 const DEFAULT_MAX_AGE_SECONDS = 0;
 const DEFAULT_FUTURE_SKEW_SECONDS = 0;
 
-export function isBlossomEnabled(env) {
-    const value = env?.BLOSSOM_ENABLED;
-    return value === true || value === 1 || ['true', '1', 'yes', 'on'].includes(String(value || '').toLowerCase());
+export async function isBlossomEnabled(env) {
+    return (await getBlossomSettings(env)).enabled;
 }
 
 function readBoundedSeconds(value, fallback, maximum) {

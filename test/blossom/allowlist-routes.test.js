@@ -13,7 +13,8 @@ const ALLOWED = '1'.repeat(64);
 const UNKNOWN = '2'.repeat(64);
 
 function context(env, request) {
-    return { env: { ...env, BLOSSOM_ENABLED: 'true' }, request, data: {}, waitUntil() {} };
+    env.img_url.put('blossom_enabled', 'true');
+    return { env, request, data: {}, waitUntil() {} };
 }
 
 async function uploadRequest(bytes, hash) {
@@ -155,18 +156,18 @@ describe('Blossom allowlist admin API', () => {
         assert.equal(reachedApi, false);
     });
 
-    it('rejects direct API access without a configured, logged-in administrator', async () => {
+    it('keeps allowlisted BUD-11 identity separate from Admin middleware access', async () => {
         const { env } = createKvEnv();
+        await addAllowedPubkey(env, ALLOWED, null);
         const request = new Request('https://img.example/api/manage/blossom/pubkeys');
-
-        const unconfigured = await onRequestGet({ env, request });
-        assert.equal(unconfigured.status, 401);
-        assert.deepEqual(await unconfigured.json(), { error: 'admin_not_configured' });
-
         env.BASIC_USER = 'admin';
         env.BASIC_PASS = 'configured';
-        const loggedOut = await onRequestGet({ env, request });
-        assert.equal(loggedOut.status, 401);
-        assert.deepEqual(await loggedOut.json(), { error: 'admin_login_required' });
+        let reachedApi = false;
+        const denied = await manageMiddleware[1]({
+            env, request,
+            next: async () => { reachedApi = true; return onRequestGet({ env }); },
+        });
+        assert.equal(denied.status, 401);
+        assert.equal(reachedApi, false);
     });
 });

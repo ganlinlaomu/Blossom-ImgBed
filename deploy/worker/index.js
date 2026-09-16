@@ -20,13 +20,10 @@ import * as apiManageBatchIndexChunk from '../../functions/api/manage/batch/inde
 import * as apiManageBatchIndexConfig from '../../functions/api/manage/batch/index/config.js';
 import * as apiManageBatchIndexFinalize from '../../functions/api/manage/batch/index/finalize.js';
 import * as apiManageBatchRestoreChunk from '../../functions/api/manage/batch/restore/chunk.js';
-import * as apiBlossomAuthChallenge from '../../functions/api/blossom/auth/challenge.js';
-import * as apiBlossomAuthLogin from '../../functions/api/blossom/auth/login.js';
-import * as apiBlossomAuthLogout from '../../functions/api/blossom/auth/logout.js';
-import * as apiBlossomAuthMe from '../../functions/api/blossom/auth/me.js';
 import * as apiManageBatchList from '../../functions/api/manage/batch/list.js';
 import * as apiManageBatchSettings from '../../functions/api/manage/batch/settings.js';
 import * as apiManageBlossomPubkeys from '../../functions/api/manage/blossom/pubkeys.js';
+import * as apiManageBlossomSettings from '../../functions/api/manage/blossom/settings.js';
 import * as apiManageCusConfigBlockip from '../../functions/api/manage/cusConfig/blockip.js';
 import * as apiManageCusConfigBlockipList from '../../functions/api/manage/cusConfig/blockipList.js';
 import * as apiManageCusConfigFiles from '../../functions/api/manage/cusConfig/files.js';
@@ -57,7 +54,6 @@ import * as apiChannels from '../../functions/api/channels.js';
 import * as apiDirectoryTree from '../../functions/api/directoryTree.js';
 import * as apiFetchRes from '../../functions/api/fetchRes.js';
 import * as apiUserConfig from '../../functions/api/userConfig.js';
-import * as blossomAccessHtml from '../../functions/blossom-access.html.js';
 import * as random_index from '../../functions/random/index.js';
 import * as upload_index from '../../functions/upload/index.js';
 import * as apiManageBlossomPubkeysPubkey from '../../functions/api/manage/blossom/pubkeys/[pubkey].js';
@@ -80,13 +76,10 @@ const routes = [
     { path: '/api/manage/batch/index/config', module: apiManageBatchIndexConfig, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/batch/index/finalize', module: apiManageBatchIndexFinalize, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/batch/restore/chunk', module: apiManageBatchRestoreChunk, middlewares: [mw_api, mw_api_manage] },
-    { path: '/api/blossom/auth/challenge', module: apiBlossomAuthChallenge, middlewares: [mw_api] },
-    { path: '/api/blossom/auth/login', module: apiBlossomAuthLogin, middlewares: [mw_api] },
-    { path: '/api/blossom/auth/logout', module: apiBlossomAuthLogout, middlewares: [mw_api] },
-    { path: '/api/blossom/auth/me', module: apiBlossomAuthMe, middlewares: [mw_api] },
     { path: '/api/manage/batch/list', module: apiManageBatchList, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/batch/settings', module: apiManageBatchSettings, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/blossom/pubkeys', module: apiManageBlossomPubkeys, middlewares: [mw_api, mw_api_manage] },
+    { path: '/api/manage/blossom/settings', module: apiManageBlossomSettings, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/blockip', module: apiManageCusConfigBlockip, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/blockipList', module: apiManageCusConfigBlockipList, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/files', module: apiManageCusConfigFiles, middlewares: [mw_api, mw_api_manage] },
@@ -117,7 +110,6 @@ const routes = [
     { path: '/api/directoryTree', module: apiDirectoryTree, middlewares: [mw_api] },
     { path: '/api/fetchRes', module: apiFetchRes, middlewares: [mw_api] },
     { path: '/api/userConfig', module: apiUserConfig, middlewares: [mw_api] },
-    { path: '/blossom-access.html', module: blossomAccessHtml, middlewares: [] },
     { path: '/random', module: random_index, middlewares: [mw_random] },
     { path: '/upload', module: upload_index, middlewares: [mw_upload] },
     { path: '/api/manage/blossom/pubkeys/:pubkey', module: apiManageBlossomPubkeysPubkey, middlewares: [mw_api, mw_api_manage], dynamic: true },

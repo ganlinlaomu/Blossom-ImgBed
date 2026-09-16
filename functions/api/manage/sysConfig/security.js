@@ -150,8 +150,10 @@ export async function getSecurityConfig(db, env) {
             authCode: kvAuth.user?.authCode ?? env.AUTH_CODE ?? '',
         },
         admin: {
-            adminUsername: kvAuth.admin?.adminUsername ?? env.BASIC_USER ?? '',
-            adminPassword: kvAuth.admin?.adminPassword ?? env.BASIC_PASS ?? '',
+            // Existing database values remain authoritative. Fresh installs
+            // fall back to deployment bindings and finally admin/admin.
+            adminUsername: kvAuth.admin?.adminUsername ?? env.BASIC_USER ?? 'admin',
+            adminPassword: kvAuth.admin?.adminPassword ?? env.BASIC_PASS ?? 'admin',
         }
     }
     settings.auth = auth
