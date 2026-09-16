@@ -4,6 +4,7 @@ import { getDatabase } from '../utils/databaseAdapter.js';
 const PUBKEY_PATTERN = /^[0-9a-f]{64}$/;
 const KV_PREFIX = 'manage@blossom@allowed-pubkey@';
 const MAX_NOTE_LENGTH = 200;
+const d1SchemaPromises = new WeakMap();
 
 export class AllowlistValidationError extends Error {
     constructor(message) {
@@ -14,6 +15,32 @@ export class AllowlistValidationError extends Error {
 
 function usesD1(env) {
     return !!(env?.img_d1 && typeof env.img_d1.prepare === 'function');
+}
+
+async function ensureD1Schema(env) {
+    if (!usesD1(env)) return;
+
+    const database = env.img_d1;
+    let schemaPromise = d1SchemaPromises.get(database);
+    if (!schemaPromise) {
+        schemaPromise = (async () => {
+            await database.prepare(`
+                CREATE TABLE IF NOT EXISTS blossom_allowed_pubkeys (
+                    pubkey TEXT PRIMARY KEY,
+                    note TEXT,
+                    created_at INTEGER NOT NULL
+                )
+            `).run();
+            await database.prepare(`
+                CREATE INDEX IF NOT EXISTS idx_blossom_allowed_pubkeys_created_at
+                ON blossom_allowed_pubkeys(created_at DESC)
+            `).run();
+        })();
+        d1SchemaPromises.set(database, schemaPromise);
+        schemaPromise.catch(() => d1SchemaPromises.delete(database));
+    }
+
+    await schemaPromise;
 }
 
 export function normalizePubkey(value) {
@@ -65,6 +92,7 @@ function kvKey(pubkey) {
 export async function isPubkeyAllowed(env, pubkey) {
     const normalized = normalizePubkey(pubkey);
     if (usesD1(env)) {
+        await ensureD1Schema(env);
         const row = await env.img_d1.prepare(
             'SELECT 1 AS found FROM blossom_allowed_pubkeys WHERE pubkey = ?'
         ).bind(normalized).first();
@@ -75,6 +103,7 @@ export async function isPubkeyAllowed(env, pubkey) {
 
 export async function listAllowedPubkeys(env) {
     if (usesD1(env)) {
+        await ensureD1Schema(env);
         const response = await env.img_d1.prepare(
             'SELECT pubkey, note, created_at FROM blossom_allowed_pubkeys ORDER BY created_at DESC, pubkey ASC'
         ).all();
@@ -109,6 +138,7 @@ export async function addAllowedPubkey(env, pubkey, note, createdAt = Math.floor
     }
 
     if (usesD1(env)) {
+        await ensureD1Schema(env);
         const result = await env.img_d1.prepare(
             'INSERT OR IGNORE INTO blossom_allowed_pubkeys (pubkey, note, created_at) VALUES (?, ?, ?)'
         ).bind(normalized, normalizedNote, createdAt).run();
@@ -131,6 +161,7 @@ export async function addAllowedPubkey(env, pubkey, note, createdAt = Math.floor
 export async function removeAllowedPubkey(env, pubkey) {
     const normalized = normalizePubkey(pubkey);
     if (usesD1(env)) {
+        await ensureD1Schema(env);
         const result = await env.img_d1.prepare(
             'DELETE FROM blossom_allowed_pubkeys WHERE pubkey = ?'
         ).bind(normalized).run();

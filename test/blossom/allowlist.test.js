@@ -64,6 +64,25 @@ describe('Blossom pubkey allowlist service', () => {
         await assert.rejects(addAllowedPubkey(env, 'f'.repeat(63), null), /valid 64-character/);
         await assert.rejects(addAllowedPubkey(env, PUBKEY, 'x'.repeat(201)), /at most 200/);
     });
+
+    it('initializes the allowlist schema before querying an existing D1 deployment', async () => {
+        const statements = [];
+        const database = {
+            prepare(sql) {
+                const normalized = sql.replace(/\s+/g, ' ').trim();
+                statements.push(normalized);
+                return {
+                    run: async () => ({ meta: { changes: 0 } }),
+                    all: async () => ({ results: [] }),
+                };
+            },
+        };
+
+        assert.deepEqual(await listAllowedPubkeys({ img_d1: database }), []);
+        assert.match(statements[0], /^CREATE TABLE IF NOT EXISTS blossom_allowed_pubkeys/);
+        assert.match(statements[1], /^CREATE INDEX IF NOT EXISTS idx_blossom_allowed_pubkeys_created_at/);
+        assert.match(statements[2], /^SELECT pubkey, note, created_at FROM blossom_allowed_pubkeys/);
+    });
 });
 
 export { createKvEnv };

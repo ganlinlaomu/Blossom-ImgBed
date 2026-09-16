@@ -100,26 +100,47 @@ describe('Blossom write allowlist enforcement', () => {
 
 describe('Blossom allowlist admin API', () => {
     it('lets the protected admin API add, list, and remove entries', async () => {
-        const { env } = createKvEnv();
+        const { env, values } = createKvEnv();
+        env.BASIC_USER = 'admin';
+        env.BASIC_PASS = 'configured';
+        values.set('manage@session@test-admin', JSON.stringify({
+            authType: 'admin', expiresAt: Date.now() + 60_000,
+        }));
+        const adminHeaders = { 'Content-Type': 'application/json', Cookie: 'admin_session=test-admin' };
         const post = await onRequestPost({ env, request: new Request('https://img.example/api/manage/blossom/pubkeys', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: adminHeaders,
             body: JSON.stringify({ pubkey: ALLOWED, note: 'HaiNei' }),
         }) });
         assert.equal(post.status, 201);
         assert.equal((await post.json()).created, true);
 
-        const list = await onRequestGet({ env });
+        const list = await onRequestGet({ env, request: new Request(
+            'https://img.example/api/manage/blossom/pubkeys', { headers: adminHeaders },
+        ) });
         assert.equal((await list.json())[0].note, 'HaiNei');
 
-        const removed = await onRequestDelete({ env, params: { pubkey: ALLOWED } });
+        const removed = await onRequestDelete({
+            env,
+            request: new Request(`https://img.example/api/manage/blossom/pubkeys/${ALLOWED}`, {
+                method: 'DELETE', headers: adminHeaders,
+            }),
+            params: { pubkey: ALLOWED },
+        });
         assert.equal(removed.status, 200);
         assert.equal((await removed.json()).removed, true);
     });
 
     it('rejects invalid admin input and denies an unauthenticated configured admin', async () => {
-        const { env } = createKvEnv();
+        const { env, values } = createKvEnv();
+        env.BASIC_USER = 'admin';
+        env.BASIC_PASS = 'configured';
+        values.set('manage@session@test-admin', JSON.stringify({
+            authType: 'admin', expiresAt: Date.now() + 60_000,
+        }));
         const invalid = await onRequestPost({ env, request: new Request('https://img.example/api/manage/blossom/pubkeys', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pubkey: 'bad' }),
+            method: 'POST', headers: {
+                'Content-Type': 'application/json', Cookie: 'admin_session=test-admin',
+            }, body: JSON.stringify({ pubkey: 'bad' }),
         }) });
         assert.equal(invalid.status, 400);
 
@@ -132,5 +153,20 @@ describe('Blossom allowlist admin API', () => {
         });
         assert.equal(denied.status, 401);
         assert.equal(reachedApi, false);
+    });
+
+    it('rejects direct API access without a configured, logged-in administrator', async () => {
+        const { env } = createKvEnv();
+        const request = new Request('https://img.example/api/manage/blossom/pubkeys');
+
+        const unconfigured = await onRequestGet({ env, request });
+        assert.equal(unconfigured.status, 401);
+        assert.deepEqual(await unconfigured.json(), { error: 'admin_not_configured' });
+
+        env.BASIC_USER = 'admin';
+        env.BASIC_PASS = 'configured';
+        const loggedOut = await onRequestGet({ env, request });
+        assert.equal(loggedOut.status, 401);
+        assert.deepEqual(await loggedOut.json(), { error: 'admin_login_required' });
     });
 });
