@@ -27,7 +27,9 @@ describe('Blossom product integration', () => {
 
     it('integrates Blossom controls into the existing System Settings page', () => {
         const script = read('frontend-dist/js/blossom-admin-settings.js');
-        assert.match(script, /window\.location\.pathname !== '\/systemConfig'/);
+        assert.match(script, /pushState/);
+        assert.match(script, /blossom-admin-shortcut/);
+        assert.match(script, /\/systemConfig#blossom/);
         assert.match(script, /Enable Blossom/);
         assert.match(script, /Allowed Nostr Pubkeys/);
         assert.match(script, /\/api\/manage\/blossom\/settings/);

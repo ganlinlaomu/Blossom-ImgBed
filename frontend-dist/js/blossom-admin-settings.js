@@ -1,8 +1,7 @@
 (() => {
-  if (window.location.pathname !== '/systemConfig') return;
-
   const settingsEndpoint = '/api/manage/blossom/settings';
   const pubkeysEndpoint = '/api/manage/blossom/pubkeys';
+  const adminPaths = new Set(['/dashboard', '/customerConfig', '/systemConfig']);
   let loading = false;
 
   async function api(url, options = {}) {
@@ -164,6 +163,25 @@
   }
 
   function sync() {
+    const onAdminPage = adminPaths.has(window.location.pathname);
+    let shortcut = document.querySelector('#blossom-admin-shortcut');
+    if (!onAdminPage) {
+      shortcut?.remove();
+      return;
+    }
+
+    const headerAction = document.querySelector('.admin-header-content .header-action');
+    if (headerAction && !shortcut) {
+      shortcut = document.createElement('a');
+      shortcut.id = 'blossom-admin-shortcut';
+      shortcut.className = 'blossom-admin-shortcut';
+      shortcut.href = '/systemConfig#blossom';
+      shortcut.textContent = 'Blossom';
+      shortcut.title = 'Blossom Settings and Nostr pubkey allowlist';
+      headerAction.prepend(shortcut);
+    }
+
+    if (window.location.pathname !== '/systemConfig') return;
     const container = document.querySelector('.container');
     const menu = document.querySelector('.sidebar-container .menu-list');
     if (!container || !menu) return;
@@ -198,5 +216,14 @@
   const observer = new MutationObserver(sync);
   observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('hashchange', sync);
+  window.addEventListener('popstate', sync);
+  for (const method of ['pushState', 'replaceState']) {
+    const original = history[method];
+    history[method] = function (...args) {
+      const result = original.apply(this, args);
+      queueMicrotask(sync);
+      return result;
+    };
+  }
   sync();
 })();
