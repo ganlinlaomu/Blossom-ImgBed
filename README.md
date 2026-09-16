@@ -67,7 +67,7 @@ PR1 adds the first Blossom protocol surface while keeping the original ImgBed UI
 * `DELETE /<sha256>` (BUD-12)
 * SHA-256 validation, basic deduplication, and many-to-many pubkey ownership
 
-Set `BLOSSOM_ENABLED=true` to enable these endpoints. BUD-11 events are accepted for five minutes by default; deployments can set `BLOSSOM_AUTH_MAX_AGE_SECONDS` to another non-negative value (maximum one day). `BLOSSOM_AUTH_FUTURE_SKEW_SECONDS` defaults to `0` to follow BUD-11's requirement that `created_at` be in the past, but can be set up to 300 seconds when controlled clients require clock-skew tolerance.
+Set `BLOSSOM_ENABLED=true` to enable these endpoints. By default, BUD-11 events remain usable until their required `expiration` tag; deployments can opt into an additional event-age limit with `BLOSSOM_AUTH_MAX_AGE_SECONDS` (maximum one day). `BLOSSOM_AUTH_FUTURE_SKEW_SECONDS` defaults to `0` to follow BUD-11's requirement that `created_at` be in the past, but can be set up to 300 seconds when controlled clients require clock-skew tolerance.
 
 Existing D1 installations can apply [`database/migrations/v2.8.0_add_blossom_metadata.sql`](database/migrations/v2.8.0_add_blossom_metadata.sql). Fresh installations receive these tables from `database/init.sql`. Docker/SQLite deployments initialize the complete schema automatically. KV deployments use the isolated `manage@blossom@...` keyspace.
 
