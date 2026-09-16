@@ -12,7 +12,10 @@ describe('Cloudflare Workers Builds deployment', () => {
         assert.equal(config.main, 'deploy/worker/index.js');
         assert.equal(config.assets.directory, 'frontend-dist');
         assert.equal(config.d1_databases[0].binding, 'img_d1');
+        assert.equal(config.d1_databases[0].database_name, 'blossom-imgbed-db');
+        assert.equal(config.d1_databases[0].database_id, undefined);
         assert.equal(config.r2_buckets[0].binding, 'img_r2');
+        assert.equal(config.r2_buckets[0].bucket_name, 'blossom-imgbed-storage');
         assert.equal(config.vars.BLOSSOM_ENABLED, 'true');
     });
 

@@ -3,6 +3,10 @@
   "version": "2.7.6",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=20 <23"
+  },
   "workspaces": [
     "deploy/profiles/*"
   ],
@@ -15,7 +19,7 @@
     "test": "node --import ./deploy/server/register.mjs ./node_modules/mocha/bin/mocha \"test/**/*.test.js\"",
     "start": "npx wrangler pages dev ./frontend-dist --kv \"img_url\" --r2 \"img_r2\" --ip 0.0.0.0 --port 8080 --persist-to ./data",
     "start:docker": "node --import ./deploy/server/register.mjs deploy/server/index.js",
-    "deploy:worker": "node deploy/worker/generate-routes.js && npx wrangler deploy --config deploy/worker/wrangler.toml"
+    "deploy:worker": "npm run deploy:cloudflare"
   },
   "overrides": {
     "fast-xml-parser": "^5.3.6"
@@ -38,9 +42,8 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "miniflare": "^4.20260708.1",
     "mocha": "^8.1.3",
     "wait-on": "^7.2.0",
-    "wrangler": "^4.24.0"
+    "wrangler": "4.110.0"
   }
 }
