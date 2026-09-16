@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const root = new URL('../../', import.meta.url);
 const read = path => readFileSync(new URL(path, root), 'utf8');
 
-describe('Cloudflare one-click deployment', () => {
+describe('Cloudflare Workers Builds deployment', () => {
     const config = JSON.parse(read('wrangler.jsonc'));
     const packageJson = JSON.parse(read('package.json'));
 
@@ -19,10 +19,12 @@ describe('Cloudflare one-click deployment', () => {
         assert.equal(config.vars.BLOSSOM_ENABLED, 'true');
     });
 
-    it('uses the resource bootstrapper for every production deploy command', () => {
-        assert.equal(packageJson.scripts.deploy, 'npm run deploy:cloudflare');
-        assert.equal(packageJson.scripts['deploy:cloudflare'], 'node scripts/deploy-cloudflare.mjs');
-        assert.equal(packageJson.scripts['deploy:worker'], 'npm run deploy:cloudflare');
+    it('keeps schema initialization explicit instead of hiding it in Workers Builds', () => {
+        assert.doesNotMatch(packageJson.scripts.deploy, /db:init:cloudflare/);
+        assert.match(packageJson.scripts['db:init:cloudflare'], /d1 execute img_d1 --remote/);
+        assert.match(packageJson.scripts['db:init:cloudflare'], /database\/init\.sql/);
+        assert.match(read('README.md'), /one-time manual step/);
+        assert.match(read('README_zh.md'), /一次性的手动步骤/);
     });
 
     it('exposes the official Deploy to Cloudflare button and secret prompts', () => {
@@ -32,13 +34,13 @@ describe('Cloudflare one-click deployment', () => {
         assert.ok(packageJson.cloudflare.bindings.BASIC_PASS.description);
     });
 
-    it('never commits the invalid production database placeholder', () => {
-        assert.doesNotMatch(read('wrangler.jsonc'), /00000000-0000-0000-0000-000000000000/);
-        assert.match(read('.gitignore'), /\.wrangler\/generated/);
-    });
-
-    it('matches the bindings consumed by the existing database and storage code', () => {
-        assert.match(read('functions/utils/databaseAdapter.js'), /env\.img_d1/);
-        assert.match(read('functions/upload/index.js'), /env\.img_r2/);
+    it('ships actionable Admin login messages for database setup failures', () => {
+        const adminLoginBundle = read('frontend-dist/js/730.d1diagnostics.js');
+        assert.match(adminLoginBundle, /database_not_configured/);
+        assert.match(adminLoginBundle, /database_not_initialized/);
+        assert.match(adminLoginBundle, /数据库尚未绑定/);
+        assert.match(adminLoginBundle, /数据库尚未初始化/);
+        assert.match(read('frontend-dist/js/app.1e4229a6.js'), /730:"d1diagnostics"/);
+        assert.match(read('frontend-dist/index.html'), /app\.1e4229a6\.js\?v=d1-initialization/);
     });
 });

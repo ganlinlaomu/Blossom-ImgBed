@@ -5,6 +5,17 @@
 
 import { D1Database } from './d1Database.js';
 
+export const REQUIRED_D1_TABLES = Object.freeze([
+    'files',
+    'settings',
+    'index_operations',
+    'index_metadata',
+    'other_data',
+    'blossom_blobs',
+    'blossom_ownership',
+    'blossom_allowed_pubkeys',
+]);
+
 /**
  * 创建数据库适配器
  * @param {Object} env - 环境变量
@@ -169,4 +180,56 @@ export function checkDatabaseConfig(env) {
         usingKV: !hasD1 && hasKV,
         configured: hasD1 || hasKV
     };
+}
+
+/**
+ * Check whether the configured database is ready for the current application.
+ *
+ * D1 uses one sqlite_schema query, so this should be called at diagnostic
+ * boundaries (for example admin login and the database status endpoint), not
+ * on every storage request. KV has no SQL schema and is ready once bound.
+ */
+export async function checkDatabaseInitialization(env) {
+    const config = checkDatabaseConfig(env);
+
+    if (!config.configured) {
+        return {
+            configured: false,
+            initialized: false,
+            type: null,
+            missingTables: [],
+        };
+    }
+
+    if (config.usingKV) {
+        return {
+            configured: true,
+            initialized: true,
+            type: 'kv',
+            missingTables: [],
+        };
+    }
+
+    try {
+        const response = await env.img_d1.prepare(
+            "SELECT name FROM sqlite_schema WHERE type = 'table'"
+        ).all();
+        const existingTables = new Set((response.results || []).map(row => row.name));
+        const missingTables = REQUIRED_D1_TABLES.filter(table => !existingTables.has(table));
+
+        return {
+            configured: true,
+            initialized: missingTables.length === 0,
+            type: 'd1',
+            missingTables,
+        };
+    } catch (error) {
+        console.error('Failed to inspect D1 schema:', error);
+        return {
+            configured: true,
+            initialized: false,
+            type: 'd1',
+            missingTables: [...REQUIRED_D1_TABLES],
+        };
+    }
 }
