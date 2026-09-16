@@ -1,7 +1,6 @@
 (() => {
   const settingsEndpoint = '/api/manage/blossom/settings';
   const pubkeysEndpoint = '/api/manage/blossom/pubkeys';
-  const adminPaths = new Set(['/dashboard', '/customerConfig', '/systemConfig']);
   let loading = false;
 
   async function api(url, options = {}) {
@@ -93,7 +92,7 @@
     panel.innerHTML = `
       <div class="blossom-settings-inner">
         <div class="blossom-heading">
-          <div><p class="blossom-kicker">Nostr protocol</p><h1>Blossom</h1></div>
+          <div><p class="blossom-kicker">Blossom access</p><h1>Nostr Allowlist</h1></div>
           <p>Manage BUD-11 write access. Nostr users never receive access to this dashboard.</p>
         </div>
         <section class="blossom-card">
@@ -163,51 +162,21 @@
   }
 
   function sync() {
-    const onAdminPage = adminPaths.has(window.location.pathname);
-    let shortcut = document.querySelector('#blossom-admin-shortcut');
-    if (!onAdminPage) {
-      shortcut?.remove();
-      return;
-    }
-
-    const headerAction = document.querySelector('.admin-header-content .header-action');
-    if (headerAction && !shortcut) {
-      shortcut = document.createElement('a');
-      shortcut.id = 'blossom-admin-shortcut';
-      shortcut.className = 'blossom-admin-shortcut';
-      shortcut.href = '/customerConfig#blossom';
-      shortcut.textContent = 'Blossom';
-      shortcut.title = 'Blossom Settings and Nostr pubkey allowlist';
-      headerAction.prepend(shortcut);
-    }
-
     if (window.location.pathname !== '/customerConfig') return;
     const container = document.querySelector('.container');
-    const userManagement = container?.querySelector(':scope > .main-container:not(.blossom-settings-panel)');
-    if (!container || !userManagement) return;
+    const legacyUserManagement = container?.querySelector(':scope > .main-container:not(.blossom-settings-panel)');
+    if (!container || !legacyUserManagement) return;
 
-    let tabs = document.querySelector('#blossom-user-management-tabs');
-    if (!tabs) {
-      tabs = document.createElement('nav');
-      tabs.id = 'blossom-user-management-tabs';
-      tabs.className = 'blossom-user-management-tabs';
-      tabs.setAttribute('aria-label', 'User management sections');
-      tabs.innerHTML = '<a href="/customerConfig">ImgBed Users</a><a href="/customerConfig#blossom">Nostr Allowlist</a>';
-      container.insertBefore(tabs, userManagement);
-    }
+    legacyUserManagement.hidden = true;
+    legacyUserManagement.setAttribute('aria-hidden', 'true');
 
     let panel = document.querySelector('#blossom-settings');
     if (!panel) {
       panel = buildPanel();
       container.append(panel);
     }
-    const active = window.location.hash === '#blossom';
-    const tabLinks = tabs.querySelectorAll('a');
-    tabLinks[0].classList.toggle('is-active', !active);
-    tabLinks[1].classList.toggle('is-active', active);
-    panel.hidden = !active;
-    userManagement.hidden = active;
-    if (active && panel.dataset.loaded !== 'true') {
+    panel.hidden = false;
+    if (panel.dataset.loaded !== 'true') {
       panel.dataset.loaded = 'true';
       loadSettings();
     }

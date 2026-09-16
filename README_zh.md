@@ -31,7 +31,7 @@ Blossom 只提供协议与认证层。文件继续使用 ImgBed 现有的渠道�
 3. 将 D1 以 `img_d1` 作为 binding name 绑定到 Worker。
 4. 在 D1 Console 执行本仓库完整的 [`database/init.sql`](database/init.sql)。
 5. 打开 `/adminLogin` 登录。数据库和环境变量都没有管理员配置时，初始账号为 `admin` / `admin`，请立即在安全设置中修改。
-6. 打开 **用户管理 → Nostr 白名单**。
+6. 打开 **用户管理**。
 7. 启用 Blossom。
 8. 添加允许的 `npub1…` 或 64 位十六进制 pubkey。
 9. 复制页面显示的 Server URL，并配置到兼容 Blossom 的 Nostr Client。
@@ -62,7 +62,7 @@ database/migrations/v2.10.0_add_blossom_settings.sql
 
 ### 管理员
 
-在 `/adminLogin` 登录，然后进入 **用户管理 → Nostr 白名单**：
+在 `/adminLogin` 登录，然后进入 **用户管理**：
 
 - 启用或关闭 Blossom 写操作；
 - 复制根据当前请求域名生成的 Server URL；
