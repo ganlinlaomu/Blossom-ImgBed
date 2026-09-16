@@ -28,13 +28,33 @@ export function getAuthorizationClockPolicy(env) {
 }
 
 function decodeBase64Url(value) {
-    if (!value || value.includes('=') || !/^[A-Za-z0-9_-]+$/.test(value) || value.length % 4 === 1) {
+    if (!value) {
         throw new BlossomError(401, 'Malformed BUD-11 authorization encoding');
     }
 
-    const base64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+    // Current BUD-11 uses unpadded Base64URL. Older Blossom clients and
+    // servers shipped standard Base64 before that requirement was clarified,
+    // so accept either alphabet while rejecting mixed or malformed encodings.
+    const isBase64Url = /^[A-Za-z0-9_-]+$/.test(value);
+    const isLegacyBase64 = /^[A-Za-z0-9+/]+={0,2}$/.test(value)
+        && !value.slice(0, -2).includes('=')
+        && value.length % 4 !== 1;
+    if (!isBase64Url && !isLegacyBase64) {
+        throw new BlossomError(401, 'Malformed BUD-11 authorization encoding');
+    }
+
+    const unpadded = value.replace(/=+$/, '');
+    if (unpadded.length % 4 === 1) {
+        throw new BlossomError(401, 'Malformed BUD-11 authorization encoding');
+    }
+    const base64 = unpadded.replace(/-/g, '+').replace(/_/g, '/')
+        .padEnd(Math.ceil(unpadded.length / 4) * 4, '=');
     try {
         const binary = atob(base64);
+        const canonical = btoa(binary).replace(/=+$/, '');
+        if (canonical !== base64.replace(/=+$/, '')) {
+            throw new Error('Non-canonical Base64');
+        }
         const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
         return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     } catch {
@@ -44,7 +64,7 @@ function decodeBase64Url(value) {
 
 export function parseAuthorizationHeader(header) {
     if (!header) throw new BlossomError(401, 'Missing Nostr Authorization header');
-    const match = /^Nostr ([A-Za-z0-9_-]+)$/i.exec(header.trim());
+    const match = /^Nostr (\S+)$/i.exec(header.trim());
     if (!match) throw new BlossomError(401, 'Malformed Nostr Authorization header');
 
     try {
