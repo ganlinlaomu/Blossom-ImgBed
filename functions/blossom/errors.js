@@ -1,7 +1,8 @@
 const CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, Content-Length, X-SHA-256, Range, If-None-Match',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, Content-Length, X-SHA-256, X-Content-Type, X-Content-Length, Range, If-None-Match',
     'Access-Control-Allow-Methods': 'GET, HEAD, PUT, DELETE, OPTIONS',
+    'Access-Control-Expose-Headers': 'X-Reason',
     'Access-Control-Max-Age': '86400',
 };
 

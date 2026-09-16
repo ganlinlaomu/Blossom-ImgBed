@@ -14,14 +14,17 @@ import { WebDAVAPI } from "../utils/storage/webdavAPI";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getDatabase } from '../utils/databaseAdapter.js';
 import { isBlossomEnabled } from '../blossom/auth.js';
-import { handleBlossomUpload } from '../blossom/upload.js';
+import { handleBlossomUpload, handleBlossomUploadPreflight } from '../blossom/upload.js';
 
 
 export async function onRequest(context) {  // Contents of context object
     const { request, env, params, waitUntil, next, data } = context;
 
-    // Blossom is additive: only enabled PUT requests use the Blossom pipeline.
-    // All legacy ImgBed methods retain their existing behavior.
+    // Blossom is additive: BUD-06 preflight and enabled PUT requests use the
+    // Blossom pipeline. All other methods retain the legacy ImgBed behavior.
+    if (request.method === 'HEAD' && isBlossomEnabled(env)) {
+        return handleBlossomUploadPreflight(context);
+    }
     if (request.method === 'PUT' && isBlossomEnabled(env)) {
         return handleBlossomUpload(context, processFileUpload);
     }
