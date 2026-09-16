@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const root = new URL('../../', import.meta.url);
 const read = path => readFileSync(new URL(path, root), 'utf8');
 
-describe('Cloudflare one-click deployment', () => {
+describe('Cloudflare Workers Builds deployment', () => {
     const config = JSON.parse(read('wrangler.jsonc'));
     const packageJson = JSON.parse(read('package.json'));
 
@@ -16,10 +16,12 @@ describe('Cloudflare one-click deployment', () => {
         assert.equal(config.vars.BLOSSOM_ENABLED, 'true');
     });
 
-    it('initializes D1 by binding name before deploying', () => {
-        assert.match(packageJson.scripts.deploy, /db:init:cloudflare/);
+    it('keeps schema initialization explicit instead of hiding it in Workers Builds', () => {
+        assert.doesNotMatch(packageJson.scripts.deploy, /db:init:cloudflare/);
         assert.match(packageJson.scripts['db:init:cloudflare'], /d1 execute img_d1 --remote/);
         assert.match(packageJson.scripts['db:init:cloudflare'], /database\/init\.sql/);
+        assert.match(read('README.md'), /one-time manual step/);
+        assert.match(read('README_zh.md'), /一次性的手动步骤/);
     });
 
     it('exposes the official Deploy to Cloudflare button and secret prompts', () => {
@@ -27,5 +29,15 @@ describe('Cloudflare one-click deployment', () => {
         assert.match(read('.dev.vars.example'), /^BASIC_USER=$/m);
         assert.match(read('.dev.vars.example'), /^BASIC_PASS=$/m);
         assert.ok(packageJson.cloudflare.bindings.BASIC_PASS.description);
+    });
+
+    it('ships actionable Admin login messages for database setup failures', () => {
+        const adminLoginBundle = read('frontend-dist/js/730.d1diagnostics.js');
+        assert.match(adminLoginBundle, /database_not_configured/);
+        assert.match(adminLoginBundle, /database_not_initialized/);
+        assert.match(adminLoginBundle, /数据库尚未绑定/);
+        assert.match(adminLoginBundle, /数据库尚未初始化/);
+        assert.match(read('frontend-dist/js/app.1e4229a6.js'), /730:"d1diagnostics"/);
+        assert.match(read('frontend-dist/index.html'), /app\.1e4229a6\.js\?v=d1-initialization/);
     });
 });

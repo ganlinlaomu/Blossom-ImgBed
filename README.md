@@ -12,27 +12,50 @@ The initial Blossom core is implemented as an additive protocol layer. It reuses
 
 ## Deploy to Cloudflare
 
-Click the button above to open Cloudflare's guided deployment page. Cloudflare clones this public repository into your GitHub or GitLab account, lets you choose the repository, Worker, D1, and R2 names, automatically provisions the resources, initializes the database, builds the Worker, and deploys the frontend and APIs.
+Connect this repository to a Worker with the Cloudflare GitHub App / Workers Builds. Workers Builds deploys the code when the configured production branch changes; it does **not** execute this repository's SQL file in D1. D1 schema initialization is a one-time manual step.
 
-The setup page asks for these Worker secrets:
+Cloudflare references: [Git integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/), [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), and [D1 binding/setup](https://developers.cloudflare.com/d1/get-started/).
+
+Use these Workers Builds commands:
+
+```text
+Build command:  npm run build
+Deploy command: npx wrangler deploy
+```
+
+This deployment model uses Cloudflare's Git integration. It does not require a GitHub Actions workflow, `CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_ACCOUNT_ID` repository secrets.
+
+### Fresh installation
+
+1. Deploy Blossom ImgBed from this GitHub repository with Cloudflare Workers Builds.
+2. In Cloudflare D1, create one database, for example `blossom-imgbed-db`.
+3. Open the deployed Worker, add a **D1 database** binding, select that database, and set **Variable name** to exactly `img_d1`.
+4. Open the database's **Console**, paste the complete [`database/init.sql`](database/init.sql), and execute it once.
+5. Optionally bind an R2 bucket as `img_r2` if you want to use Cloudflare R2 storage. R2 is not required for Admin login; Telegram, S3, WebDAV, Hugging Face, Discord, and the other existing storage providers remain available.
+6. Configure the Worker runtime secrets and open the Admin page:
 
 * `BASIC_USER`: administrator username
 * `BASIC_PASS`: a strong administrator password
 
-The deployment template enables Blossom and provisions:
+The `img_d1` binding points to a single database containing both the complete ImgBed base schema and the Blossom additions:
 
-* D1 binding `img_d1` for ImgBed metadata, Blossom ownership, allowlist, challenges, and sessions
-* R2 binding `img_r2` for object storage
-* the existing Cloudflare Images binding and static frontend assets
+```text
+img_d1
+├── files
+├── settings
+├── index_operations
+├── index_metadata
+├── other_data
+├── blossom_blobs
+├── blossom_ownership
+└── blossom_allowed_pubkeys
+```
 
-After deployment:
+The local [`database/init.sql`](database/init.sql) is the only schema file required for a fresh installation. It already contains the full CloudFlare-ImgBed base schema plus the current Blossom schema; do not fetch or execute an SQL file from the upstream repository first. The script is idempotent (`CREATE ... IF NOT EXISTS`) and can be run again without deleting existing rows.
 
-1. Open the generated `workers.dev` URL and sign in to the ImgBed administrator console.
-2. Open `/blossom-access.html` and add the Nostr pubkeys allowed to write.
-3. Open `/blossom-upload.html` with a NIP-07 signer, or use any standard Blossom client.
-4. Configure another existing ImgBed storage provider in the administrator console only if you do not want to use the provisioned R2 backend.
+For an existing CloudFlare-ImgBed database, keep its existing base tables and data, then apply only the required files in [`database/migrations/`](database/migrations/) to add Blossom tables. Migrations are for upgrades; they are not prerequisites for a fresh install.
 
-The one-click flow uses the root [`wrangler.jsonc`](wrangler.jsonc). `npm run deploy` regenerates the Worker routes, runs the idempotent [`database/init.sql`](database/init.sql) against the provisioned D1 binding, and deploys the Worker. No Cloudflare API token is stored in this repository.
+If Admin login reports `database_not_configured`, add the D1 binding with the exact variable name `img_d1`. If it reports `database_not_initialized`, run this project's `database/init.sql` in the D1 Console. `GET /api/system/database-status` provides the same safe diagnostic state without returning database IDs or credentials.
 
 ## Blossom Support
 
@@ -46,7 +69,7 @@ PR1 adds the first Blossom protocol surface while keeping the original ImgBed UI
 
 Set `BLOSSOM_ENABLED=true` to enable these endpoints. BUD-11 events are accepted for five minutes by default; deployments can set `BLOSSOM_AUTH_MAX_AGE_SECONDS` to another non-negative value (maximum one day). `BLOSSOM_AUTH_FUTURE_SKEW_SECONDS` defaults to `0` to follow BUD-11's requirement that `created_at` be in the past, but can be set up to 300 seconds when controlled clients require clock-skew tolerance.
 
-For D1 deployments, apply [`database/migrations/v2.8.0_add_blossom_metadata.sql`](database/migrations/v2.8.0_add_blossom_metadata.sql). Docker/SQLite deployments apply this migration automatically. KV deployments use the isolated `manage@blossom@...` keyspace.
+Existing D1 installations can apply [`database/migrations/v2.8.0_add_blossom_metadata.sql`](database/migrations/v2.8.0_add_blossom_metadata.sql). Fresh installations receive these tables from `database/init.sql`. Docker/SQLite deployments initialize the complete schema automatically. KV deployments use the isolated `manage@blossom@...` keyspace.
 
 ## Blossom Upload Access
 
@@ -69,7 +92,7 @@ POST   /api/manage/blossom/pubkeys
 DELETE /api/manage/blossom/pubkeys/<pubkey>
 ```
 
-For D1 deployments, also apply [`database/migrations/v2.9.0_add_blossom_allowlist.sql`](database/migrations/v2.9.0_add_blossom_allowlist.sql). Docker/SQLite applies it automatically. KV deployments use isolated `manage@blossom@allowed-pubkey@...` keys.
+Existing D1 installations can also apply [`database/migrations/v2.9.0_add_blossom_allowlist.sql`](database/migrations/v2.9.0_add_blossom_allowlist.sql). Fresh installations receive this table from `database/init.sql`. Docker/SQLite initializes the complete schema automatically. KV deployments use isolated `manage@blossom@allowed-pubkey@...` keys.
 
 ## NIP-07 Web Login
 
