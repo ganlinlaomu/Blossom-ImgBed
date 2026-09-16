@@ -44,7 +44,7 @@
     (() => {
       if (window.location.pathname === '/') return;
       document.querySelector('#landing').remove();
-      for (const href of ['/css/chunk-vendors.f9cd4701.css', '/css/app.966aac8a.css', '/css/blossom-admin-settings.css?v=user-management']) {
+      for (const href of ['/css/chunk-vendors.f9cd4701.css', '/css/app.966aac8a.css', '/css/blossom-admin-settings.css?v=nostr-allowlist']) {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = href;
@@ -59,7 +59,7 @@
       });
       load('/js/chunk-vendors.c0852d4e.js')
         .then(() => load('/js/app.1e4229a6.js?v=blossom-admin-integration'))
-        .then(() => load('/js/blossom-admin-settings.js?v=user-management'));
+        .then(() => load('/js/blossom-admin-settings.js?v=nostr-allowlist'));
     })();
   </script>
 </body>
