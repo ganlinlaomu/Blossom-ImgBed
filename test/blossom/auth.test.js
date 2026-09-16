@@ -20,6 +20,10 @@ function authorization(event) {
     return `Nostr ${Buffer.from(JSON.stringify(event)).toString('base64url')}`;
 }
 
+function legacyAuthorization(event) {
+    return `Nostr ${Buffer.from(JSON.stringify(event)).toString('base64')}`;
+}
+
 function requestFor(event) {
     return new Request('https://blossom.example/upload', { headers: { Authorization: authorization(event) } });
 }
@@ -28,6 +32,17 @@ describe('BUD-11 authentication', () => {
     it('accepts a valid signed authorization event', () => {
         const event = signedEvent();
         const result = authenticateBud11(requestFor(event), {}, {
+            action: 'upload', sha256: HASH_A, requireHash: true,
+        });
+        assert.equal(result.pubkey, event.pubkey);
+    });
+
+    it('accepts legacy standard Base64 authorization from existing Blossom clients', () => {
+        const event = signedEvent();
+        const request = new Request('https://blossom.example/upload', {
+            headers: { Authorization: legacyAuthorization(event) },
+        });
+        const result = authenticateBud11(request, {}, {
             action: 'upload', sha256: HASH_A, requireHash: true,
         });
         assert.equal(result.pubkey, event.pubkey);
