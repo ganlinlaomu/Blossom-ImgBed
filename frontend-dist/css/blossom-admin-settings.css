@@ -37,6 +37,8 @@
 .blossom-message.success { color: var(--el-color-success, #67c23a); }
 .blossom-message.error { color: var(--el-color-danger, #f56c6c); }
 .blossom-menu-icon { width: 1em; margin-right: 12px; text-align: center; }
+.blossom-admin-shortcut { display: inline-flex; align-items: center; min-height: 32px; margin-right: 14px; padding: 0 12px; border: 1px solid var(--el-color-primary, #409eff); border-radius: 999px; color: var(--el-color-primary, #409eff); font-size: 13px; font-weight: 650; text-decoration: none; }
+.blossom-admin-shortcut:hover { background: var(--el-color-primary, #409eff); color: #fff; }
 @media (max-width: 720px) {
   .blossom-settings-inner { width: min(100% - 20px, 920px); padding-top: 22px; }
   .blossom-heading { display: block; }
