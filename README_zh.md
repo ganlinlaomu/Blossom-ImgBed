@@ -4,7 +4,7 @@ Blossom ImgBed 是基于 CloudFlare-ImgBed 存储能力开发的独立 Blossom �
 
 ## 使用 Cloudflare GitHub App / Workers Builds 部署
 
-将本仓库通过 Cloudflare GitHub App 连接到 Worker。Workers Builds 会在生产分支更新后部署代码，但**不会**自动在 D1 中执行本仓库的 SQL；初始化 D1 schema 是一次性的手动步骤。
+将本仓库通过 Cloudflare GitHub App 连接到 Worker。本项目的部署脚本会在发布 Worker 前，自动对绑定的 D1 执行 [`database/init.sql`](database/init.sql)。该 SQL 是幂等的，后续重新部署时重复执行也不会删除现有数据。
 
 Cloudflare 官方参考：[Git 集成](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/)、[Workers Builds 配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)与 [D1 绑定/初始化](https://developers.cloudflare.com/d1/get-started/)。
 
@@ -12,19 +12,17 @@ Workers Builds 建议配置：
 
 ```text
 Build command:  npm run build
-Deploy command: npx wrangler deploy
+Deploy command: npm run deploy
 ```
 
 此流程使用 Cloudflare 自带的 Git 集成，不需要 GitHub Actions，也不需要在 GitHub 仓库配置 `CLOUDFLARE_API_TOKEN` 或 `CLOUDFLARE_ACCOUNT_ID`。
 
 ### 全新安装
 
-1. 使用 Cloudflare Workers Builds 从本 GitHub 仓库部署 Blossom ImgBed Worker。
-2. 在 Cloudflare D1 创建一个数据库，例如 `blossom-imgbed-db`。
-3. 打开已部署 Worker 的 Bindings，添加 **D1 database** binding，选择刚创建的数据库，并将 **Variable name** 严格设置为 `img_d1`。
-4. 打开该 D1 的 **Console**，粘贴并执行本项目完整的 [`database/init.sql`](database/init.sql)。只需执行一次。
-5. 如需使用 Cloudflare R2 存储，再把 R2 bucket 绑定为 `img_r2`。R2 不是 Admin 登录的必要条件；Telegram、S3、WebDAV、Hugging Face、Discord 等原有存储渠道继续可用。
-6. 配置 Worker 运行时的管理员变量 `BASIC_USER` 与 `BASIC_PASS`，然后访问 Admin。
+1. 点击上方 **Deploy to Cloudflare** 按钮，并将生成的仓库连接到 Workers Builds。
+2. 保留自动识别的 Deploy command：`npm run deploy`。Cloudflare 会创建 `wrangler.jsonc` 声明的 D1/R2 资源，并将 D1 绑定为 `img_d1`。
+3. 部署过程中，`npm run db:init:cloudflare` 会在发布 Worker 前，对该 binding 自动执行完整的 [`database/init.sql`](database/init.sql)。
+4. 配置 Worker 运行时的管理员变量 `BASIC_USER` 与 `BASIC_PASS`，然后访问 Admin。
 
 `img_d1` 始终指向同一个 D1，其中同时包含完整 ImgBed 基础 schema 与 Blossom schema：
 
@@ -40,11 +38,13 @@ img_d1
 └── blossom_allowed_pubkeys
 ```
 
-全新安装只需执行 Blossom-ImgBed 自己的 [`database/init.sql`](database/init.sql)。它已经包含 CloudFlare-ImgBed 的完整基础 schema 和当前 Blossom schema，不需要再到上游仓库寻找或先执行另一份 SQL。脚本全部使用 `CREATE ... IF NOT EXISTS`，重复执行不会删除已有数据。
+全新安装只使用 Blossom-ImgBed 自己的 [`database/init.sql`](database/init.sql)。它已经包含 CloudFlare-ImgBed 的完整基础 schema 和当前 Blossom schema，不需要再到上游仓库寻找或先执行另一份 SQL。部署脚本会自动执行它；其中全部使用 `CREATE ... IF NOT EXISTS`，重复部署不会删除已有数据。
+
+如果是手动连接 Git 仓库，请把 Workers Builds 的 Deploy command 设置为 `npm run deploy`。只使用 `npx wrangler deploy` 会跳过数据库初始化。对于旧部署或故障恢复，仍可在 D1 Console 手动执行 `database/init.sql`，或在已登录 Wrangler 的项目目录运行 `npm run db:init:cloudflare`。
 
 已有 CloudFlare-ImgBed 数据库应保留原表和数据，再按需要执行 [`database/migrations/`](database/migrations/) 中的 Blossom 升级脚本。migration 用于旧数据库升级，不是全新安装的必需步骤。
 
-如果 Admin 登录返回 `database_not_configured`，请检查 D1 binding 的变量名是否严格为 `img_d1`；如果返回 `database_not_initialized`，请在 D1 Console 执行本项目的 `database/init.sql`。`GET /api/system/database-status` 可返回同样的安全诊断信息，不会暴露 database ID、密码或凭据。
+如果 Admin 登录返回 `database_not_configured`，请检查 D1 binding 的变量名是否严格为 `img_d1`；如果返回 `database_not_initialized`，说明部署可能跳过或未能完成初始化命令，请重新执行 `npm run deploy`，或在 D1 Console 执行本项目的 `database/init.sql`。`GET /api/system/database-status` 可返回同样的安全诊断信息，不会暴露 database ID、密码或凭据。
 
 ---
 

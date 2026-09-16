@@ -19,12 +19,13 @@ describe('Cloudflare Workers Builds deployment', () => {
         assert.equal(config.vars.BLOSSOM_ENABLED, 'true');
     });
 
-    it('keeps schema initialization explicit instead of hiding it in Workers Builds', () => {
-        assert.doesNotMatch(packageJson.scripts.deploy, /db:init:cloudflare/);
+    it('initializes the complete D1 schema during one-click deployment', () => {
+        assert.equal(packageJson.scripts.deploy, 'npm run deploy:cloudflare');
+        assert.equal(packageJson.scripts['deploy:cloudflare'], 'node scripts/deploy-cloudflare.mjs');
         assert.match(packageJson.scripts['db:init:cloudflare'], /d1 execute img_d1 --remote/);
         assert.match(packageJson.scripts['db:init:cloudflare'], /database\/init\.sql/);
-        assert.match(read('README.md'), /one-time manual step/);
-        assert.match(read('README_zh.md'), /一次性的手动步骤/);
+        assert.match(read('README.md'), /automatically initializes/);
+        assert.match(read('README_zh.md'), /自动执行/);
     });
 
     it('exposes the official Deploy to Cloudflare button and secret prompts', () => {

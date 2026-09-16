@@ -12,7 +12,7 @@ The initial Blossom core is implemented as an additive protocol layer. It reuses
 
 ## Deploy to Cloudflare
 
-Connect this repository to a Worker with the Cloudflare GitHub App / Workers Builds. Workers Builds deploys the code when the configured production branch changes; it does **not** execute this repository's SQL file in D1. D1 schema initialization is a one-time manual step.
+Connect this repository to a Worker with the Cloudflare GitHub App / Workers Builds. The repository's deploy script automatically initializes the bound D1 database with [`database/init.sql`](database/init.sql) before publishing the Worker. The SQL is idempotent, so it is safe to run again on later deployments and does not delete existing data.
 
 Cloudflare references: [Git integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/), [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), and [D1 binding/setup](https://developers.cloudflare.com/d1/get-started/).
 
@@ -20,19 +20,17 @@ Use these Workers Builds commands:
 
 ```text
 Build command:  npm run build
-Deploy command: npx wrangler deploy
+Deploy command: npm run deploy
 ```
 
 This deployment model uses Cloudflare's Git integration. It does not require a GitHub Actions workflow, `CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_ACCOUNT_ID` repository secrets.
 
 ### Fresh installation
 
-1. Deploy Blossom ImgBed from this GitHub repository with Cloudflare Workers Builds.
-2. In Cloudflare D1, create one database, for example `blossom-imgbed-db`.
-3. Open the deployed Worker, add a **D1 database** binding, select that database, and set **Variable name** to exactly `img_d1`.
-4. Open the database's **Console**, paste the complete [`database/init.sql`](database/init.sql), and execute it once.
-5. Optionally bind an R2 bucket as `img_r2` if you want to use Cloudflare R2 storage. R2 is not required for Admin login; Telegram, S3, WebDAV, Hugging Face, Discord, and the other existing storage providers remain available.
-6. Configure the Worker runtime secrets and open the Admin page:
+1. Use the **Deploy to Cloudflare** button above and connect the generated repository to Workers Builds.
+2. Keep the detected deploy command as `npm run deploy`. Cloudflare provisions the D1 and R2 resources declared in `wrangler.jsonc` and binds the D1 as `img_d1`.
+3. During deployment, `npm run db:init:cloudflare` executes the complete [`database/init.sql`](database/init.sql) against that binding before the Worker is published.
+4. Configure the Worker runtime secrets and open the Admin page:
 
 * `BASIC_USER`: administrator username
 * `BASIC_PASS`: a strong administrator password
@@ -51,11 +49,13 @@ img_d1
 └── blossom_allowed_pubkeys
 ```
 
-The local [`database/init.sql`](database/init.sql) is the only schema file required for a fresh installation. It already contains the full CloudFlare-ImgBed base schema plus the current Blossom schema; do not fetch or execute an SQL file from the upstream repository first. The script is idempotent (`CREATE ... IF NOT EXISTS`) and can be run again without deleting existing rows.
+The local [`database/init.sql`](database/init.sql) is the only schema file required for a fresh installation. It already contains the full CloudFlare-ImgBed base schema plus the current Blossom schema; do not fetch or execute an SQL file from the upstream repository first. The deploy script runs it automatically. It is idempotent (`CREATE ... IF NOT EXISTS`) and can be run again without deleting existing rows.
+
+If you connect the repository manually, use `npm run deploy` as the Workers Builds deploy command. Using only `npx wrangler deploy` bypasses database initialization. For recovery or an older deployment, you can still paste `database/init.sql` into the D1 Console or run `npm run db:init:cloudflare` from an authenticated checkout.
 
 For an existing CloudFlare-ImgBed database, keep its existing base tables and data, then apply only the required files in [`database/migrations/`](database/migrations/) to add Blossom tables. Migrations are for upgrades; they are not prerequisites for a fresh install.
 
-If Admin login reports `database_not_configured`, add the D1 binding with the exact variable name `img_d1`. If it reports `database_not_initialized`, run this project's `database/init.sql` in the D1 Console. `GET /api/system/database-status` provides the same safe diagnostic state without returning database IDs or credentials.
+If Admin login reports `database_not_configured`, add the D1 binding with the exact variable name `img_d1`. If it reports `database_not_initialized`, the deployment likely bypassed or could not complete the initialization command; run `npm run deploy` again, or run this project's `database/init.sql` in the D1 Console. `GET /api/system/database-status` provides the same safe diagnostic state without returning database IDs or credentials.
 
 ## Blossom Support
 
