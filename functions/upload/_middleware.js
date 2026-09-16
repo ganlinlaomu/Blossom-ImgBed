@@ -4,7 +4,8 @@ import { errorHandling, telemetryData, checkDatabaseConfig } from '../utils/midd
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Content-Length, Authorization, X-SHA-256',
+    'Access-Control-Allow-Headers': 'Content-Type, Content-Length, Authorization, X-SHA-256, X-Content-Type, X-Content-Length',
+    'Access-Control-Expose-Headers': 'X-Reason',
     'Access-Control-Max-Age': '86400',
 };
 

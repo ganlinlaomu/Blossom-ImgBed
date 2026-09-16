@@ -1,5 +1,5 @@
 import { authenticateBud11, isBlossomEnabled } from './auth.js';
-import { BlossomError, errorResponse, jsonResponse } from './errors.js';
+import { BlossomError, blossomHeaders, errorResponse, jsonResponse } from './errors.js';
 import { assertSha256, readAndHashRequest } from './hash.js';
 import { addOwnership, deleteBlob, getBlob, putBlob } from './metadata.js';
 import { getImgBedRecord, uploadViaImgBed } from './imgbed.js';
@@ -22,6 +22,52 @@ function extensionForType(type) {
         'text/plain': 'txt', 'application/json': 'json', 'application/octet-stream': 'bin',
     };
     return known[type] || type.split('/')[1].replace(/[^a-z0-9]/g, '').slice(0, 16) || 'bin';
+}
+
+function parseLength(value, headerName, { required = false } = {}) {
+    if (value === null || value === '') {
+        if (required) throw new BlossomError(411, `${headerName} header is required`);
+        return null;
+    }
+    if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value))) {
+        throw new BlossomError(400, `Invalid ${headerName} header`);
+    }
+    return Number(value);
+}
+
+export function createUploadPreflightHandler(dependencies = {}) {
+    const deps = {
+        authenticate: authenticateBud11,
+        isPubkeyAllowed,
+        ...dependencies,
+    };
+
+    return async function handleUploadPreflight(context) {
+        try {
+            if (!isBlossomEnabled(context.env)) throw new BlossomError(404, 'Blossom support is disabled');
+
+            const authorizedHash = assertSha256(
+                context.request.headers.get('X-SHA-256'),
+                'HEAD /upload requires a lowercase X-SHA-256 header'
+            );
+            const { pubkey } = deps.authenticate(context.request, context.env, {
+                action: 'upload', sha256: authorizedHash, requireHash: true,
+            });
+            if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
+                return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+            }
+
+            parseLength(context.request.headers.get('X-Content-Length'), 'X-Content-Length', { required: true });
+            normalizeMimeType(context.request.headers.get('X-Content-Type'));
+
+            return new Response(null, {
+                status: 200,
+                headers: blossomHeaders({ 'Cache-Control': 'no-store' }),
+            });
+        } catch (error) {
+            return errorResponse(error);
+        }
+    };
 }
 
 export function blobDescriptor(request, blob) {
@@ -64,17 +110,14 @@ export function createUploadHandler(dependencies = {}) {
                 return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
             }
 
-            const declaredLength = context.request.headers.get('Content-Length');
-            if (declaredLength !== null && (!/^\d+$/.test(declaredLength) || !Number.isSafeInteger(Number(declaredLength)))) {
-                throw new BlossomError(400, 'Invalid Content-Length');
-            }
+            const declaredLength = parseLength(context.request.headers.get('Content-Length'), 'Content-Length');
 
             const type = normalizeMimeType(context.request.headers.get('Content-Type'));
             const body = await deps.readAndHash(context.request);
             if (body.sha256 !== authorizedHash) {
                 throw new BlossomError(409, 'X-SHA-256 and BUD-11 hash do not match the uploaded blob');
             }
-            if (declaredLength !== null && Number(declaredLength) !== body.size) {
+            if (declaredLength !== null && declaredLength !== body.size) {
                 throw new BlossomError(400, 'Content-Length does not match the uploaded blob');
             }
 
@@ -104,3 +147,4 @@ export function createUploadHandler(dependencies = {}) {
 }
 
 export const handleBlossomUpload = createUploadHandler();
+export const handleBlossomUploadPreflight = createUploadPreflightHandler();
