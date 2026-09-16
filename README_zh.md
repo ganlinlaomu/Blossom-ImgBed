@@ -44,6 +44,10 @@ img_d1
 
 已有 CloudFlare-ImgBed 数据库应保留原表和数据，再按需要执行 [`database/migrations/`](database/migrations/) 中的 Blossom 升级脚本。migration 用于旧数据库升级，不是全新安装的必需步骤。
 
+## Blossom 授权有效期
+
+BUD-11 授权事件默认可使用到其必需的 `expiration` 标签指定的时间。项目不再额外套用五分钟的默认时限，以兼容会在有效期内缓存授权事件的客户端。如需更严格的部署策略，可通过 `BLOSSOM_AUTH_MAX_AGE_SECONDS` 设置额外的事件年龄上限（最大一天）；设置为 `0` 表示仅遵循 `expiration`。
+
 如果 Admin 登录返回 `database_not_configured`，请检查 D1 binding 的变量名是否严格为 `img_d1`；如果返回 `database_not_initialized`，说明部署可能跳过或未能完成初始化命令，请重新执行 `npm run deploy`，或在 D1 Console 执行本项目的 `database/init.sql`。`GET /api/system/database-status` 可返回同样的安全诊断信息，不会暴露 database ID、密码或凭据。
 
 ---

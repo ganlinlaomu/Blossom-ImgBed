@@ -47,12 +47,23 @@ describe('BUD-11 authentication', () => {
         }), /kind/);
     });
 
-    it('rejects expired and stale events', () => {
+    it('rejects expired events but accepts unexpired cached events by default', () => {
         const now = Math.floor(Date.now() / 1000);
         assert.throws(() => authenticateBud11(requestFor(signedEvent({ expiration: now - 1 })), {}, {
             action: 'upload', sha256: HASH_A, requireHash: true,
         }), /expired/);
-        assert.throws(() => authenticateBud11(requestFor(signedEvent({ createdAt: now - 301 })), {}, {
+        const cached = signedEvent({ createdAt: now - 301, expiration: now + 3600 });
+        assert.equal(authenticateBud11(requestFor(cached), {}, {
+            action: 'upload', sha256: HASH_A, requireHash: true,
+        }).pubkey, cached.pubkey);
+    });
+
+    it('supports an opt-in maximum authorization age', () => {
+        const now = Math.floor(Date.now() / 1000);
+        assert.throws(() => authenticateBud11(requestFor(signedEvent({
+            createdAt: now - 301,
+            expiration: now + 3600,
+        })), { BLOSSOM_AUTH_MAX_AGE_SECONDS: '300' }, {
             action: 'upload', sha256: HASH_A, requireHash: true,
         }), /too old/);
     });

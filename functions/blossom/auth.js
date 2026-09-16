@@ -2,7 +2,10 @@ import { BlossomError } from './errors.js';
 import { verifyAuthorizationEvent } from './event.js';
 import { SHA256_PATTERN } from './types.js';
 
-const DEFAULT_MAX_AGE_SECONDS = 300;
+// BUD-11 already bounds a token's lifetime with its required expiration tag.
+// A separate age limit is opt-in because clients may legitimately cache and
+// reuse an authorization event until that expiration time.
+const DEFAULT_MAX_AGE_SECONDS = 0;
 const DEFAULT_FUTURE_SKEW_SECONDS = 0;
 
 export function isBlossomEnabled(env) {
