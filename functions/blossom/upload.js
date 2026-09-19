@@ -4,6 +4,7 @@ import { assertSha256, readAndHashRequest } from './hash.js';
 import { addOwnership, deleteBlob, getBlob, putBlob } from './metadata.js';
 import { getImgBedRecord, uploadViaImgBed } from './imgbed.js';
 import { isPubkeyAllowed } from './allowlist.js';
+import { authenticateHaiNeiUploadToken } from './hainei-access.js';
 
 const MIME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*;.*)?$/;
 
@@ -87,6 +88,7 @@ export function blobDescriptor(request, blob) {
 export function createUploadHandler(dependencies = {}) {
     const deps = {
         authenticate: authenticateBud11,
+        authenticateHaiNeiUpload: authenticateHaiNeiUploadToken,
         readAndHash: readAndHashRequest,
         getBlob,
         putBlob,
@@ -110,12 +112,19 @@ export function createUploadHandler(dependencies = {}) {
                 hashHeader,
                 'PUT /upload X-SHA-256 header must be a lowercase SHA-256 hash'
             );
-            const { event, pubkey } = deps.authenticate(context.request, context.env, {
-                action: 'upload',
-                ...(authorizedHash ? { sha256: authorizedHash, requireHash: true } : { requireHash: false }),
-            });
-            if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
-                return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+            const haiNeiAuth = await deps.authenticateHaiNeiUpload(context.request, context.env);
+            let pubkey;
+            let event = null;
+            if (haiNeiAuth.authorized) {
+                pubkey = haiNeiAuth.pubkey;
+            } else {
+                ({ event, pubkey } = deps.authenticate(context.request, context.env, {
+                    action: 'upload',
+                    ...(authorizedHash ? { sha256: authorizedHash, requireHash: true } : { requireHash: false }),
+                }));
+                if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
+                    return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+                }
             }
 
             const declaredLength = parseLength(context.request.headers.get('Content-Length'), 'Content-Length');
@@ -125,7 +134,7 @@ export function createUploadHandler(dependencies = {}) {
             if (authorizedHash && body.sha256 !== authorizedHash) {
                 throw new BlossomError(409, 'X-SHA-256 and BUD-11 hash do not match the uploaded blob');
             }
-            if (!authorizedHash) {
+            if (!authorizedHash && !haiNeiAuth.authorized) {
                 const signedHashes = event.tags
                     .filter(tag => tag[0] === 'x')
                     .map(tag => tag[1]);

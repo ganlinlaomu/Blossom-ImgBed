@@ -54,6 +54,7 @@ Blossom 只提供协议与认证层。文件继续使用 ImgBed 现有的渠道�
 database/migrations/v2.8.0_add_blossom_metadata.sql
 database/migrations/v2.9.0_add_blossom_allowlist.sql
 database/migrations/v2.10.0_add_blossom_settings.sql
+database/migrations/v2.11.0_add_blossom_hainei_access.sql
 ```
 
 这些迁移只增加 Blossom 表、索引和默认关闭的设置，不会删除或覆盖原文件、settings、metadata 或存储配置。
@@ -74,6 +75,10 @@ database/migrations/v2.10.0_add_blossom_settings.sql
 
 本项目不提供 Blossom Web Login、NIP-07 登录或 Web Upload Dashboard。用户只需把 Server URL 添加到兼容客户端。客户端用用户私钥签署 BUD-11 请求；服务器验证 kind `24242`、签名、action、expiration、server/hash scope 和 pubkey 白名单后，调用 ImgBed 存储引擎。
 
+### HaiNei 客户端
+
+HaiNei 可通过一次性 challenge + Nostr 签名换取短期上传 token（`blossom:upload`，默认 1 小时）。该 token 仅能用于 Blossom 上传，不具备管理员、设置、白名单、用户管理或存储后端管理权限。
+
 ## API
 
 Blossom：
@@ -84,6 +89,8 @@ PUT    /upload
 GET    /<sha256>[.<ext>]
 HEAD   /<sha256>[.<ext>]
 DELETE /<sha256>[.<ext>]
+POST   /api/hainei/challenge
+POST   /api/hainei/token
 ```
 
 由现有 Admin 中间件保护的管理 API：

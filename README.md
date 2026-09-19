@@ -56,6 +56,7 @@ Back up the database, then apply the non-destructive Blossom migrations in order
 database/migrations/v2.8.0_add_blossom_metadata.sql
 database/migrations/v2.9.0_add_blossom_allowlist.sql
 database/migrations/v2.10.0_add_blossom_settings.sql
+database/migrations/v2.11.0_add_blossom_hainei_access.sql
 ```
 
 The migrations only add Blossom tables/indexes and the default disabled setting. They do not delete or rewrite existing files, settings, metadata, or storage configuration.
@@ -76,6 +77,10 @@ Disabling Blossom rejects signed `PUT` and `DELETE` operations with `403 {"error
 
 There is no Blossom web login or web upload dashboard. Add the server URL to a compatible Nostr client. The client uses the user's private key to sign each standard BUD-11 request; the server verifies the kind `24242` event, signature, action, expiration, server/hash scope, and pubkey allowlist before invoking ImgBed storage.
 
+### HaiNei client
+
+HaiNei can exchange a Nostr-signed one-time challenge for a short-lived upload token (`blossom:upload`, default 1 hour). The short-lived token is valid for Blossom uploads only and does not grant admin/settings/allowlist/user/storage management access.
+
 ## Blossom endpoints
 
 ```text
@@ -84,6 +89,8 @@ PUT    /upload
 GET    /<sha256>[.<ext>]
 HEAD   /<sha256>[.<ext>]
 DELETE /<sha256>[.<ext>]
+POST   /api/hainei/challenge
+POST   /api/hainei/token
 ```
 
 Management endpoints are protected by the existing Admin middleware:
