@@ -7,25 +7,14 @@ import {
 } from '../../functions/blossom/hainei-access.js';
 import { onRequestPost as createChallengeRoute } from '../../functions/api/hainei/challenge.js';
 import { onRequestPost as createTokenRoute } from '../../functions/api/hainei/token.js';
+import { SqliteD1 } from '../../deploy/server/sqliteD1.js';
 
 const SECRET_KEY = generateSecretKey();
 
 function createEnv() {
-    const values = new Map();
     return {
-        values,
         env: {
-            img_url: {
-                async get(key) { return values.get(key) ?? null; },
-                async put(key, value) { values.set(key, value); },
-                async delete(key) { values.delete(key); },
-                async list({ prefix = '' } = {}) {
-                    return {
-                        keys: [...values.keys()].filter(key => key.startsWith(prefix)).map(name => ({ name })),
-                        list_complete: true,
-                    };
-                },
-            },
+            img_d1: new SqliteD1(':memory:'),
         },
     };
 }

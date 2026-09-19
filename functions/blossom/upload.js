@@ -39,7 +39,6 @@ function parseLength(value, headerName, { required = false } = {}) {
 export function createUploadPreflightHandler(dependencies = {}) {
     const deps = {
         authenticate: authenticateBud11,
-        authenticateHaiNeiUpload: authenticateHaiNeiUploadToken,
         isPubkeyAllowed,
         isEnabled: isBlossomEnabled,
         ...dependencies,
@@ -55,14 +54,11 @@ export function createUploadPreflightHandler(dependencies = {}) {
                 context.request.headers.get('X-SHA-256'),
                 'HEAD /upload requires a lowercase X-SHA-256 header'
             );
-            const haiNeiAuth = await deps.authenticateHaiNeiUpload(context.request, context.env);
-            if (!haiNeiAuth.authorized) {
-                const { pubkey } = deps.authenticate(context.request, context.env, {
-                    action: 'upload', sha256: authorizedHash, requireHash: true,
-                });
-                if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
-                    return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
-                }
+            const { pubkey } = deps.authenticate(context.request, context.env, {
+                action: 'upload', sha256: authorizedHash, requireHash: true,
+            });
+            if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
+                return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
             }
 
             parseLength(context.request.headers.get('X-Content-Length'), 'X-Content-Length', { required: true });

@@ -1,10 +1,7 @@
 import { verifyNostrEvent } from './event.js';
 import { BlossomError } from './errors.js';
 import { BLOSSOM_EVENT_KIND } from './types.js';
-import { getDatabase } from '../utils/databaseAdapter.js';
 
-const CHALLENGE_PREFIX = 'manage@blossom@hainei@challenge@';
-const TOKEN_PREFIX = 'manage@blossom@hainei@token@';
 const TOKEN_SCOPE_UPLOAD = 'blossom:upload';
 const DEFAULT_CHALLENGE_TTL_SECONDS = 300;
 const DEFAULT_TOKEN_TTL_SECONDS = 3600;
@@ -84,14 +81,6 @@ async function ensureD1Schema(env) {
     await schemaPromise;
 }
 
-function challengeKey(challenge) {
-    return `${CHALLENGE_PREFIX}${challenge}`;
-}
-
-function tokenKey(tokenHash) {
-    return `${TOKEN_PREFIX}${tokenHash}`;
-}
-
 function getTagValues(event, name) {
     return event.tags.filter(tag => tag[0] === name).map(tag => tag[1]);
 }
@@ -109,52 +98,33 @@ async function consumeChallenge(env, challenge, now) {
         throw new BlossomError(400, 'invalid_challenge');
     }
 
-    if (usesD1(env)) {
-        await ensureD1Schema(env);
-        const row = await env.img_d1.prepare(
-            'SELECT challenge, expires_at, used_at FROM blossom_hainei_challenges WHERE challenge = ?'
-        ).bind(challenge).first();
-        if (!row) throw new BlossomError(400, 'invalid_challenge');
-        if (row.used_at !== null && row.used_at !== undefined) {
-            throw new BlossomError(409, 'challenge_already_used');
-        }
-        if (Number(row.expires_at) <= now) {
-            throw new BlossomError(410, 'challenge_expired');
-        }
-
-        const result = await env.img_d1.prepare(
-            `UPDATE blossom_hainei_challenges
-             SET used_at = ?
-             WHERE challenge = ? AND used_at IS NULL AND expires_at > ?`
-        ).bind(now, challenge, now).run();
-        if (Number(result?.meta?.changes || 0) === 0) {
-            const refreshed = await env.img_d1.prepare(
-                'SELECT expires_at, used_at FROM blossom_hainei_challenges WHERE challenge = ?'
-            ).bind(challenge).first();
-            if (refreshed && Number(refreshed.expires_at) <= now) {
-                throw new BlossomError(410, 'challenge_expired');
-            }
-            throw new BlossomError(409, 'challenge_already_used');
-        }
-        return;
+    if (!usesD1(env)) throw new BlossomError(503, 'hainei_access_requires_d1');
+    await ensureD1Schema(env);
+    const row = await env.img_d1.prepare(
+        'SELECT challenge, expires_at, used_at FROM blossom_hainei_challenges WHERE challenge = ?'
+    ).bind(challenge).first();
+    if (!row) throw new BlossomError(400, 'invalid_challenge');
+    if (row.used_at !== null && row.used_at !== undefined) {
+        throw new BlossomError(409, 'challenge_already_used');
     }
-
-    const db = getDatabase(env);
-    const key = challengeKey(challenge);
-    const value = await db.get(key);
-    if (!value) throw new BlossomError(400, 'invalid_challenge');
-
-    const record = JSON.parse(value);
-    if (record.usedAt) throw new BlossomError(409, 'challenge_already_used');
-    if (Number(record.expiresAt) <= now) {
-        await db.delete(key);
+    if (Number(row.expires_at) <= now) {
         throw new BlossomError(410, 'challenge_expired');
     }
 
-    record.usedAt = now;
-    await db.put(key, JSON.stringify(record), {
-        expirationTtl: Math.max(60, Number(record.expiresAt) - now + 60),
-    });
+    const result = await env.img_d1.prepare(
+        `UPDATE blossom_hainei_challenges
+         SET used_at = ?
+         WHERE challenge = ? AND used_at IS NULL AND expires_at > ?`
+    ).bind(now, challenge, now).run();
+    if (Number(result?.meta?.changes || 0) === 0) {
+        const refreshed = await env.img_d1.prepare(
+            'SELECT expires_at, used_at FROM blossom_hainei_challenges WHERE challenge = ?'
+        ).bind(challenge).first();
+        if (refreshed && Number(refreshed.expires_at) <= now) {
+            throw new BlossomError(410, 'challenge_expired');
+        }
+        throw new BlossomError(409, 'challenge_already_used');
+    }
 }
 
 function validateExchangeEvent(event, challenge, request, now) {
@@ -219,21 +189,14 @@ function parseExchangeEvent(request, body) {
 }
 
 export async function createHaiNeiChallenge(env, now = nowSeconds()) {
+    if (!usesD1(env)) throw new BlossomError(503, 'hainei_access_requires_d1');
     const { challengeTtlSeconds } = readTokenPolicy(env);
     const challenge = randomHex(32);
     const expiresAt = now + challengeTtlSeconds;
-    const record = { challenge, createdAt: now, expiresAt, usedAt: null };
-
-    if (usesD1(env)) {
-        await ensureD1Schema(env);
-        await env.img_d1.prepare(
-            'INSERT INTO blossom_hainei_challenges (challenge, created_at, expires_at, used_at) VALUES (?, ?, ?, NULL)'
-        ).bind(challenge, now, expiresAt).run();
-    } else {
-        await getDatabase(env).put(challengeKey(challenge), JSON.stringify(record), {
-            expirationTtl: challengeTtlSeconds + 60,
-        });
-    }
+    await ensureD1Schema(env);
+    await env.img_d1.prepare(
+        'INSERT INTO blossom_hainei_challenges (challenge, created_at, expires_at, used_at) VALUES (?, ?, ?, NULL)'
+    ).bind(challenge, now, expiresAt).run();
 
     return {
         challenge,
@@ -243,6 +206,7 @@ export async function createHaiNeiChallenge(env, now = nowSeconds()) {
 }
 
 export async function exchangeHaiNeiChallengeForUploadToken(request, env, body) {
+    if (!usesD1(env)) throw new BlossomError(503, 'hainei_access_requires_d1');
     const now = nowSeconds();
     const challenge = typeof body?.challenge === 'string' ? body.challenge.trim().toLowerCase() : '';
     if (!challenge) throw new BlossomError(400, 'challenge_required');
@@ -264,17 +228,11 @@ export async function exchangeHaiNeiChallengeForUploadToken(request, env, body) 
         expiresAt,
     };
 
-    if (usesD1(env)) {
-        await ensureD1Schema(env);
-        await env.img_d1.prepare(`
-            INSERT INTO blossom_hainei_tokens (token_hash, pubkey, scope, created_at, expires_at)
-            VALUES (?, ?, ?, ?, ?)
-        `).bind(record.tokenHash, record.pubkey, record.scope, record.createdAt, record.expiresAt).run();
-    } else {
-        await getDatabase(env).put(tokenKey(record.tokenHash), JSON.stringify(record), {
-            expirationTtl: tokenTtlSeconds + 60,
-        });
-    }
+    await ensureD1Schema(env);
+    await env.img_d1.prepare(`
+        INSERT INTO blossom_hainei_tokens (token_hash, pubkey, scope, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?)
+    `).bind(record.tokenHash, record.pubkey, record.scope, record.createdAt, record.expiresAt).run();
 
     return {
         token,
@@ -287,25 +245,20 @@ export async function exchangeHaiNeiChallengeForUploadToken(request, env, body) 
 }
 
 async function getTokenRecord(env, tokenHash) {
-    if (usesD1(env)) {
-        await ensureD1Schema(env);
-        const row = await env.img_d1.prepare(`
-            SELECT token_hash, pubkey, scope, created_at, expires_at
-            FROM blossom_hainei_tokens
-            WHERE token_hash = ?
-        `).bind(tokenHash).first();
-        return row ? {
-            tokenHash: row.token_hash,
-            pubkey: row.pubkey,
-            scope: row.scope,
-            createdAt: Number(row.created_at),
-            expiresAt: Number(row.expires_at),
-        } : null;
-    }
-
-    const value = await getDatabase(env).get(tokenKey(tokenHash));
-    if (!value) return null;
-    return JSON.parse(value);
+    if (!usesD1(env)) return null;
+    await ensureD1Schema(env);
+    const row = await env.img_d1.prepare(`
+        SELECT token_hash, pubkey, scope, created_at, expires_at
+        FROM blossom_hainei_tokens
+        WHERE token_hash = ?
+    `).bind(tokenHash).first();
+    return row ? {
+        tokenHash: row.token_hash,
+        pubkey: row.pubkey,
+        scope: row.scope,
+        createdAt: Number(row.created_at),
+        expiresAt: Number(row.expires_at),
+    } : null;
 }
 
 export async function authenticateHaiNeiUploadToken(request, env) {
