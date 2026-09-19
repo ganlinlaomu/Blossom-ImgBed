@@ -29,6 +29,10 @@ const haiNeiAccessMigration = readFileSync(
     new URL('../database/migrations/v2.11.0_add_blossom_hainei_access.sql', import.meta.url),
     'utf8',
 );
+const clientAwareAllowlistMigration = readFileSync(
+    new URL('../database/migrations/v2.12.0_add_client_aware_allowlist.sql', import.meta.url),
+    'utf8',
+);
 
 function loginRequest(username = 'admin', password = 'secret') {
     return new Request('https://img.example/api/auth/adminLogin', {
@@ -153,6 +157,7 @@ describe('D1 initialization diagnostics', () => {
         img_d1.exec('ALTER TABLE settings ADD COLUMN category TEXT; ALTER TABLE settings ADD COLUMN description TEXT;');
         img_d1.exec(settingsMigration);
         img_d1.exec(haiNeiAccessMigration);
+        img_d1.exec(clientAwareAllowlistMigration);
 
         const preserved = await img_d1.prepare(
             "SELECT value FROM files WHERE id = 'existing-file'"

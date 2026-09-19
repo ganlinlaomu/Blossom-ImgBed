@@ -5,6 +5,7 @@ import { addOwnership, deleteBlob, getBlob, putBlob } from './metadata.js';
 import { getImgBedRecord, uploadViaImgBed } from './imgbed.js';
 import { isPubkeyAllowed } from './allowlist.js';
 import { authenticateHaiNeiUploadToken } from './hainei-access.js';
+import { getBlossomSettings } from './settings.js';
 
 const MIME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*;.*)?$/;
 
@@ -85,10 +86,19 @@ export function blobDescriptor(request, blob) {
     };
 }
 
+function shouldBypassAllowlist(clientInfo, settings) {
+    if (!settings?.enabled) return false;
+    if (clientInfo?.isHaiNeiClient) {
+        return settings.allowHaiNeiClientsWithoutAllowlist !== false;
+    }
+    return settings.requireAllowlistForNonHaiNeiClients === false;
+}
+
 export function createUploadHandler(dependencies = {}) {
     const deps = {
         authenticate: authenticateBud11,
         authenticateHaiNeiUpload: authenticateHaiNeiUploadToken,
+        getSettings: getBlossomSettings,
         readAndHash: readAndHashRequest,
         getBlob,
         putBlob,
@@ -115,8 +125,12 @@ export function createUploadHandler(dependencies = {}) {
             const haiNeiAuth = await deps.authenticateHaiNeiUpload(context.request, context.env);
             let pubkey;
             let event = null;
+            const settings = await deps.getSettings(context.env);
             if (haiNeiAuth.authorized) {
                 pubkey = haiNeiAuth.pubkey;
+                if (!shouldBypassAllowlist(haiNeiAuth.clientInfo, settings) && !await deps.isPubkeyAllowed(context.env, pubkey)) {
+                    return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+                }
             } else {
                 ({ event, pubkey } = deps.authenticate(context.request, context.env, {
                     action: 'upload',

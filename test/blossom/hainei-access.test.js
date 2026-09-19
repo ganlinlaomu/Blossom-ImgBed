@@ -19,7 +19,7 @@ function createEnv() {
     };
 }
 
-function signedExchangeEvent(challenge, now = Math.floor(Date.now() / 1000)) {
+function signedExchangeEvent(challenge, now = Math.floor(Date.now() / 1000), { client = 'hainei', version = '1.0' } = {}) {
     return finalizeEvent({
         kind: 24242,
         created_at: now,
@@ -29,6 +29,8 @@ function signedExchangeEvent(challenge, now = Math.floor(Date.now() / 1000)) {
             ['challenge', challenge],
             ['expiration', String(now + 120)],
             ['server', 'blossom.example'],
+            ['client', client],
+            ['client_version', version],
         ],
     }, SECRET_KEY);
 }
@@ -64,6 +66,11 @@ describe('HaiNei short-lived Blossom access', () => {
         assert.equal(auth.authorized, true);
         assert.equal(auth.pubkey, event.pubkey);
         assert.equal(auth.scope, 'blossom:upload');
+        assert.deepEqual(auth.clientInfo, {
+            client: 'hainei',
+            version: '1.0',
+            isHaiNeiClient: true,
+        });
 
         await assert.rejects(
             exchangeHaiNeiChallengeForUploadToken(
@@ -75,6 +82,24 @@ describe('HaiNei short-lived Blossom access', () => {
             ),
             /challenge_already_used/
         );
+    });
+
+    it('keeps non-HaiNei tokens marked as non-HaiNei clients', async () => {
+        const { env } = createEnv();
+        const challengeData = await createHaiNeiChallenge(env);
+        const event = signedExchangeEvent(challengeData.challenge, Math.floor(Date.now() / 1000), { client: 'other-client' });
+        const tokenData = await exchangeHaiNeiChallengeForUploadToken(
+            new Request('https://blossom.example/api/hainei/token', {
+                headers: { Authorization: `Nostr ${Buffer.from(JSON.stringify(event)).toString('base64url')}` },
+            }),
+            env,
+            { challenge: challengeData.challenge }
+        );
+        const auth = await authenticateHaiNeiUploadToken({
+            headers: { get: name => (name.toLowerCase() === 'authorization' ? 'Bearer ' + tokenData.token : null) },
+        }, env);
+        assert.equal(auth.clientInfo.isHaiNeiClient, false);
+        assert.equal(auth.clientInfo.client, 'other-client');
     });
 
     it('exposes challenge/token API endpoints for HaiNei clients', async () => {
