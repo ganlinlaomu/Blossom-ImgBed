@@ -123,9 +123,17 @@ async function consumeChallenge(env, challenge, now) {
         }
 
         const result = await env.img_d1.prepare(
-            'UPDATE blossom_hainei_challenges SET used_at = ? WHERE challenge = ? AND used_at IS NULL'
-        ).bind(now, challenge).run();
+            `UPDATE blossom_hainei_challenges
+             SET used_at = ?
+             WHERE challenge = ? AND used_at IS NULL AND expires_at > ?`
+        ).bind(now, challenge, now).run();
         if (Number(result?.meta?.changes || 0) === 0) {
+            const refreshed = await env.img_d1.prepare(
+                'SELECT expires_at, used_at FROM blossom_hainei_challenges WHERE challenge = ?'
+            ).bind(challenge).first();
+            if (refreshed && Number(refreshed.expires_at) <= now) {
+                throw new BlossomError(410, 'challenge_expired');
+            }
             throw new BlossomError(409, 'challenge_already_used');
         }
         return;

@@ -97,12 +97,16 @@ describe('HaiNei short-lived Blossom access', () => {
         assert.match(challengeBody.challenge, /^[0-9a-f]{64}$/);
 
         const event = signedExchangeEvent(challengeBody.challenge);
+        const payload = JSON.stringify({ challenge: challengeBody.challenge, event });
         const tokenResponse = await createTokenRoute({
             env,
             request: new Request('https://blossom.example/api/hainei/token', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ challenge: challengeBody.challenge, event }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': String(payload.length),
+                },
+                body: payload,
             }),
         });
         assert.equal(tokenResponse.status, 201);

@@ -16,10 +16,21 @@ function json(value, status = 200) {
 
 export async function onRequestPost({ request, env }) {
     try {
-        const contentLength = Number(request.headers.get('Content-Length') || 0);
-        if (contentLength > 65536) return json({ error: 'request_too_large' }, 413);
+        const contentLengthHeader = request.headers.get('Content-Length');
+        if (contentLengthHeader === null || contentLengthHeader === '') {
+            return json({ error: 'content_length_required' }, 411);
+        }
+        if (!/^\d+$/.test(contentLengthHeader)) {
+            return json({ error: 'invalid_content_length' }, 400);
+        }
+        const contentLength = Number(contentLengthHeader);
+        if (!Number.isSafeInteger(contentLength) || contentLength > 65536) {
+            return json({ error: 'request_too_large' }, 413);
+        }
 
-        const body = await request.json();
+        const raw = await request.text();
+        if (raw.length > 65536) return json({ error: 'request_too_large' }, 413);
+        const body = raw ? JSON.parse(raw) : {};
         return json(await exchangeHaiNeiChallengeForUploadToken(request, env, body), 201);
     } catch (error) {
         if (error instanceof BlossomError) return json({ error: error.message }, error.status);
