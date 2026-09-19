@@ -166,6 +166,8 @@ function validateExchangeEvent(event, challenge, request, now) {
             throw new BlossomError(401, 'Nostr authorization is not valid for this server');
         }
     }
+
+    return expiration;
 }
 
 function parseExchangeEvent(request, body) {
@@ -212,13 +214,13 @@ export async function exchangeHaiNeiChallengeForUploadToken(request, env, body) 
     if (!challenge) throw new BlossomError(400, 'challenge_required');
 
     const event = parseExchangeEvent(request, body);
-    validateExchangeEvent(event, challenge, request, now);
+    const eventExpiration = validateExchangeEvent(event, challenge, request, now);
     await consumeChallenge(env, challenge, now);
 
     const { tokenTtlSeconds } = readTokenPolicy(env);
     const token = `hainei_${randomHex(32)}`;
     const tokenHash = await sha256Hex(token);
-    const expiresAt = now + tokenTtlSeconds;
+    const expiresAt = now + Math.min(tokenTtlSeconds, Math.max(1, eventExpiration - now));
     const scope = TOKEN_SCOPE_UPLOAD;
     const record = {
         tokenHash,

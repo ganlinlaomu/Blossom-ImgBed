@@ -49,6 +49,8 @@ describe('HaiNei short-lived Blossom access', () => {
         assert.equal(tokenData.scope, 'blossom:upload');
         assert.equal(tokenData.pubkey, event.pubkey);
         assert.match(tokenData.token, /^hainei_[0-9a-f]{64}$/);
+        const eventExpiration = Number(event.tags.find(tag => tag[0] === 'expiration')[1]);
+        assert.ok(tokenData.expiresAt <= eventExpiration);
         const authRequest = {
             headers: {
                 get(name) {

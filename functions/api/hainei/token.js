@@ -17,15 +17,14 @@ function json(value, status = 200) {
 export async function onRequestPost({ request, env }) {
     try {
         const contentLengthHeader = request.headers.get('Content-Length');
-        if (contentLengthHeader === null || contentLengthHeader === '') {
-            return json({ error: 'content_length_required' }, 411);
-        }
-        if (!/^\d+$/.test(contentLengthHeader)) {
-            return json({ error: 'invalid_content_length' }, 400);
-        }
-        const contentLength = Number(contentLengthHeader);
-        if (!Number.isSafeInteger(contentLength) || contentLength > 65536) {
-            return json({ error: 'request_too_large' }, 413);
+        if (contentLengthHeader !== null && contentLengthHeader !== '') {
+            if (!/^\d+$/.test(contentLengthHeader)) {
+                return json({ error: 'invalid_content_length' }, 400);
+            }
+            const contentLength = Number(contentLengthHeader);
+            if (!Number.isSafeInteger(contentLength) || contentLength > 65536) {
+                return json({ error: 'request_too_large' }, 413);
+            }
         }
 
         const raw = await request.text();
