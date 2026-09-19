@@ -31,6 +31,9 @@ export async function onRequestPost({ request, env }) {
         const raw = await request.text();
         if (raw.length > 65536) return json({ error: 'request_too_large' }, 413);
         const body = raw ? JSON.parse(raw) : {};
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            return json({ error: 'invalid_json_object' }, 400);
+        }
         return json(await exchangeHaiNeiChallengeForUploadToken(request, env, body), 201);
     } catch (error) {
         if (error instanceof BlossomError) return json({ error: error.message }, error.status);

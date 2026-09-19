@@ -102,4 +102,22 @@ describe('HaiNei short-lived Blossom access', () => {
         const tokenBody = await tokenResponse.json();
         assert.equal(tokenBody.scope, 'blossom:upload');
     });
+
+    it('rejects non-object JSON payloads on token exchange', async () => {
+        const { env } = createEnv();
+        const payload = '[]';
+        const response = await createTokenRoute({
+            env,
+            request: new Request('https://blossom.example/api/hainei/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': String(payload.length),
+                },
+                body: payload,
+            }),
+        });
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), { error: 'invalid_json_object' });
+    });
 });
