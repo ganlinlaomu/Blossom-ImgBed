@@ -96,6 +96,21 @@ CREATE TABLE IF NOT EXISTS blossom_allowed_pubkeys (
     created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS blossom_hainei_challenges (
+    challenge TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS blossom_hainei_tokens (
+    token_hash TEXT PRIMARY KEY,
+    pubkey TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
 -- Blossom write operations are opt-in. Existing settings are never overwritten.
 INSERT OR IGNORE INTO settings (key, value, category, description)
 VALUES ('blossom_enabled', 'false', 'blossom', 'Enable Blossom BUD-11 write operations');
@@ -117,6 +132,8 @@ CREATE INDEX IF NOT EXISTS idx_index_operations_type ON index_operations(type);
 CREATE INDEX IF NOT EXISTS idx_other_data_type ON other_data(type);
 CREATE INDEX IF NOT EXISTS idx_blossom_ownership_pubkey ON blossom_ownership(pubkey);
 CREATE INDEX IF NOT EXISTS idx_blossom_allowed_pubkeys_created_at ON blossom_allowed_pubkeys(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_blossom_hainei_challenges_expires_at ON blossom_hainei_challenges(expires_at);
+CREATE INDEX IF NOT EXISTS idx_blossom_hainei_tokens_expires_at ON blossom_hainei_tokens(expires_at);
 
 CREATE TRIGGER IF NOT EXISTS update_files_updated_at 
     AFTER UPDATE ON files

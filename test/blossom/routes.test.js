@@ -143,6 +143,30 @@ describe('Blossom upload', () => {
         assert.equal(pipelineCalls, 1);
     });
 
+    it('accepts HaiNei upload token without requiring allowlist auth', async () => {
+        const bytes = new TextEncoder().encode('hainei short-lived upload');
+        const hash = await sha256Hex(bytes);
+        let bud11Calls = 0;
+        let pipelineCalls = 0;
+        const handler = createUploadHandler({
+            authenticate: () => { bud11Calls++; return { pubkey: PUBKEY_A }; },
+            authenticateHaiNeiUpload: async () => ({ authorized: true, pubkey: PUBKEY_B }),
+            isPubkeyAllowed: async () => false,
+            getBlob: async () => null,
+            putBlob: async () => {},
+            addOwnership: async () => {},
+            uploadViaImgBed: async () => {
+                pipelineCalls++;
+                return `blossom/${hash}.txt`;
+            },
+        });
+
+        const response = await handler(context(await uploadRequest(bytes, hash)), () => {});
+        assert.equal(response.status, 201);
+        assert.equal(pipelineCalls, 1);
+        assert.equal(bud11Calls, 0);
+    });
+
     it('rejects PUT without X-SHA-256 when the signed x tag does not cover the body', async () => {
         const bytes = new TextEncoder().encode('body hash is not authorized');
         let pipelineCalls = 0;
