@@ -125,9 +125,9 @@ export function createUploadHandler(dependencies = {}) {
             const haiNeiAuth = await deps.authenticateHaiNeiUpload(context.request, context.env);
             let pubkey;
             let event = null;
-            const settings = await deps.getSettings(context.env);
             if (haiNeiAuth.authorized) {
                 pubkey = haiNeiAuth.pubkey;
+                const settings = await deps.getSettings(context.env);
                 if (!shouldBypassAllowlist(haiNeiAuth.clientInfo, settings) && !await deps.isPubkeyAllowed(context.env, pubkey)) {
                     return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
                 }
