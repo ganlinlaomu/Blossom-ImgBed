@@ -1,4 +1,6 @@
-ALTER TABLE blossom_hainei_tokens ADD COLUMN client_info TEXT;
+-- HaiNei token `client_info` column is added idempotently by the runtime schema
+-- bootstrap in functions/blossom/hainei-access.js to avoid duplicate-column
+-- failures in mixed-version environments.
 
 INSERT OR IGNORE INTO settings (key, value, category, description)
 VALUES
