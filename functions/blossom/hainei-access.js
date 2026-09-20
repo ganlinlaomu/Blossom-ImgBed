@@ -70,7 +70,13 @@ async function ensureD1Schema(env) {
             const hasClientInfoColumn = Array.isArray(columnInfo?.results)
                 && columnInfo.results.some(column => column.name === 'client_info');
             if (!hasClientInfoColumn) {
-                await database.prepare('ALTER TABLE blossom_hainei_tokens ADD COLUMN client_info TEXT').run();
+                try {
+                    await database.prepare('ALTER TABLE blossom_hainei_tokens ADD COLUMN client_info TEXT').run();
+                } catch (error) {
+                    if (!String(error?.message || '').includes('duplicate column name')) {
+                        throw error;
+                    }
+                }
             }
             await database.prepare(`
                 CREATE INDEX IF NOT EXISTS idx_blossom_hainei_tokens_expires_at
