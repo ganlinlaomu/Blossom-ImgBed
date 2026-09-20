@@ -66,12 +66,6 @@ async function ensureD1Schema(env) {
                     expires_at INTEGER NOT NULL
                 )
             `).run();
-            const columnInfo = await database.prepare('PRAGMA table_info(blossom_hainei_tokens)').all();
-            const hasClientInfoColumn = Array.isArray(columnInfo?.results)
-                && columnInfo.results.some(column => column.name === 'client_info');
-            if (!hasClientInfoColumn) {
-                await database.prepare('ALTER TABLE blossom_hainei_tokens ADD COLUMN client_info TEXT').run();
-            }
             await database.prepare(`
                 CREATE INDEX IF NOT EXISTS idx_blossom_hainei_tokens_expires_at
                 ON blossom_hainei_tokens(expires_at)

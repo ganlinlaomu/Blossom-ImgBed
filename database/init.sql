@@ -140,7 +140,6 @@ CREATE INDEX IF NOT EXISTS idx_blossom_ownership_pubkey ON blossom_ownership(pub
 CREATE INDEX IF NOT EXISTS idx_blossom_allowed_pubkeys_created_at ON blossom_allowed_pubkeys(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_blossom_hainei_challenges_expires_at ON blossom_hainei_challenges(expires_at);
 CREATE INDEX IF NOT EXISTS idx_blossom_hainei_tokens_expires_at ON blossom_hainei_tokens(expires_at);
-CREATE INDEX IF NOT EXISTS idx_blossom_hainei_tokens_client_info ON blossom_hainei_tokens(client_info);
 
 CREATE TRIGGER IF NOT EXISTS update_files_updated_at 
     AFTER UPDATE ON files
