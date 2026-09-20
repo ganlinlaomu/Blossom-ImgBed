@@ -61,10 +61,23 @@ async function ensureD1Schema(env) {
                     token_hash TEXT PRIMARY KEY,
                     pubkey TEXT NOT NULL,
                     scope TEXT NOT NULL,
+                    client_info TEXT,
                     created_at INTEGER NOT NULL,
                     expires_at INTEGER NOT NULL
                 )
             `).run();
+            const columnInfo = await database.prepare('PRAGMA table_info(blossom_hainei_tokens)').all();
+            const hasClientInfoColumn = Array.isArray(columnInfo?.results)
+                && columnInfo.results.some(column => column.name === 'client_info');
+            if (!hasClientInfoColumn) {
+                try {
+                    await database.prepare('ALTER TABLE blossom_hainei_tokens ADD COLUMN client_info TEXT').run();
+                } catch (error) {
+                    if (!String(error?.message || '').includes('duplicate column name')) {
+                        throw error;
+                    }
+                }
+            }
             await database.prepare(`
                 CREATE INDEX IF NOT EXISTS idx_blossom_hainei_tokens_expires_at
                 ON blossom_hainei_tokens(expires_at)
@@ -83,6 +96,21 @@ async function ensureD1Schema(env) {
 
 function getTagValues(event, name) {
     return event.tags.filter(tag => tag[0] === name).map(tag => tag[1]);
+}
+
+function extractClientInfo(event) {
+    if (!event || !Array.isArray(event.tags)) {
+        return { client: null, version: null, isHaiNeiClient: false };
+    }
+
+    const clientTag = event.tags.find(tag => tag[0] === 'client');
+    const versionTag = event.tags.find(tag => tag[0] === 'client_version');
+
+    return {
+        client: clientTag ? clientTag[1] : null,
+        version: versionTag ? versionTag[1] : null,
+        isHaiNeiClient: !!(clientTag && clientTag[1] === 'hainei'),
+    };
 }
 
 function parseAuthorizationHeader(header) {
@@ -222,19 +250,28 @@ export async function exchangeHaiNeiChallengeForUploadToken(request, env, body) 
     const tokenHash = await sha256Hex(token);
     const expiresAt = now + Math.min(tokenTtlSeconds, Math.max(1, eventExpiration - now));
     const scope = TOKEN_SCOPE_UPLOAD;
+    const clientInfo = extractClientInfo(event);
     const record = {
         tokenHash,
         pubkey: event.pubkey,
         scope,
+        clientInfo: JSON.stringify(clientInfo),
         createdAt: now,
         expiresAt,
     };
 
     await ensureD1Schema(env);
     await env.img_d1.prepare(`
-        INSERT INTO blossom_hainei_tokens (token_hash, pubkey, scope, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?)
-    `).bind(record.tokenHash, record.pubkey, record.scope, record.createdAt, record.expiresAt).run();
+        INSERT INTO blossom_hainei_tokens (token_hash, pubkey, scope, client_info, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+        record.tokenHash,
+        record.pubkey,
+        record.scope,
+        record.clientInfo,
+        record.createdAt,
+        record.expiresAt,
+    ).run();
 
     return {
         token,
@@ -250,7 +287,7 @@ async function getTokenRecord(env, tokenHash) {
     if (!usesD1(env)) return null;
     await ensureD1Schema(env);
     const row = await env.img_d1.prepare(`
-        SELECT token_hash, pubkey, scope, created_at, expires_at
+        SELECT token_hash, pubkey, scope, client_info, created_at, expires_at
         FROM blossom_hainei_tokens
         WHERE token_hash = ?
     `).bind(tokenHash).first();
@@ -258,6 +295,7 @@ async function getTokenRecord(env, tokenHash) {
         tokenHash: row.token_hash,
         pubkey: row.pubkey,
         scope: row.scope,
+        clientInfo: row.client_info,
         createdAt: Number(row.created_at),
         expiresAt: Number(row.expires_at),
     } : null;
@@ -279,11 +317,24 @@ export async function authenticateHaiNeiUploadToken(request, env) {
         throw new BlossomError(403, 'invalid_hainei_scope');
     }
 
+    let clientInfo = { isHaiNeiClient: false };
+    if (record.clientInfo) {
+        try {
+            const parsed = JSON.parse(record.clientInfo);
+            if (parsed && typeof parsed === 'object') {
+                clientInfo = parsed;
+            }
+        } catch {
+            clientInfo = { isHaiNeiClient: false };
+        }
+    }
+
     return {
         matched: true,
         authorized: true,
         pubkey: record.pubkey,
         scope: record.scope,
         expiresAt: record.expiresAt,
+        clientInfo,
     };
 }

@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS blossom_hainei_tokens (
     token_hash TEXT PRIMARY KEY,
     pubkey TEXT NOT NULL,
     scope TEXT NOT NULL,
+    client_info TEXT,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
 );
@@ -114,6 +115,11 @@ CREATE TABLE IF NOT EXISTS blossom_hainei_tokens (
 -- Blossom write operations are opt-in. Existing settings are never overwritten.
 INSERT OR IGNORE INTO settings (key, value, category, description)
 VALUES ('blossom_enabled', 'false', 'blossom', 'Enable Blossom BUD-11 write operations');
+
+INSERT OR IGNORE INTO settings (key, value, category, description)
+VALUES
+    ('blossom_allow_hainei_clients_without_allowlist', 'true', 'blossom', 'Allow HaiNei clients to upload without pubkey allowlist checks'),
+    ('blossom_require_allowlist_for_non_hainei_clients', 'true', 'blossom', 'Require non-HaiNei short-lived token clients to pass pubkey allowlist checks');
 
 CREATE INDEX IF NOT EXISTS idx_files_timestamp ON files(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_files_directory ON files(directory);

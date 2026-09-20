@@ -43,6 +43,8 @@ describe('Blossom product integration', () => {
         const request = new Request('https://media.example/api/manage/blossom/settings');
         assert.deepEqual(await getBlossomSettings(env, request), {
             enabled: false,
+            allowHaiNeiClientsWithoutAllowlist: true,
+            requireAllowlistForNonHaiNeiClients: true,
             serverUrl: 'https://media.example',
         });
         await setBlossomEnabled(env, true);
@@ -60,7 +62,28 @@ describe('Blossom product integration', () => {
         const saved = await saveSettings({ env, request: new Request(url, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }),
         }) });
-        assert.deepEqual(await saved.json(), { enabled: true, serverUrl: 'https://media.example' });
+        assert.deepEqual(await saved.json(), {
+            enabled: true,
+            allowHaiNeiClientsWithoutAllowlist: true,
+            requireAllowlistForNonHaiNeiClients: true,
+            serverUrl: 'https://media.example',
+        });
+
+        const savedPolicy = await saveSettings({ env, request: new Request(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                enabled: true,
+                allowHaiNeiClientsWithoutAllowlist: false,
+                requireAllowlistForNonHaiNeiClients: true,
+            }),
+        }) });
+        assert.deepEqual(await savedPolicy.json(), {
+            enabled: true,
+            allowHaiNeiClientsWithoutAllowlist: false,
+            requireAllowlistForNonHaiNeiClients: true,
+            serverUrl: 'https://media.example',
+        });
     });
 
     it('denies an unauthenticated request to both Blossom management endpoints', async () => {

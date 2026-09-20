@@ -1,0 +1,8 @@
+-- HaiNei token `client_info` column is added idempotently by the runtime schema
+-- bootstrap in functions/blossom/hainei-access.js to avoid duplicate-column
+-- failures in mixed-version environments.
+
+INSERT OR IGNORE INTO settings (key, value, category, description)
+VALUES
+    ('blossom_allow_hainei_clients_without_allowlist', 'true', 'blossom', 'Allow HaiNei clients to upload without pubkey allowlist checks'),
+    ('blossom_require_allowlist_for_non_hainei_clients', 'true', 'blossom', 'Require non-HaiNei short-lived token clients to pass pubkey allowlist checks');
