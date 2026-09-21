@@ -107,19 +107,49 @@ CREATE TABLE IF NOT EXISTS blossom_hainei_tokens (
     token_hash TEXT PRIMARY KEY,
     pubkey TEXT NOT NULL,
     scope TEXT NOT NULL,
-    client_info TEXT,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
+);
+
+-- Deprecated blossom_hainei_* tables above are retained temporarily so an
+-- upgrade never destroys data. Current runtime code does not read or write them.
+CREATE TABLE IF NOT EXISTS blossom_upload_tokens (
+    token_hash TEXT PRIMARY KEY,
+    subject_pubkey TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    issued_by TEXT,
+    parent_token_id TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    revoked_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS hainei_users (
+    pubkey TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL,
+    last_seen_at INTEGER,
+    revoked_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS hainei_auth_challenges (
+    challenge_hash TEXT PRIMARY KEY,
+    pubkey TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS hainei_media_usage (
+    pubkey TEXT NOT NULL,
+    usage_date TEXT NOT NULL,
+    upload_count INTEGER NOT NULL DEFAULT 0,
+    upload_bytes INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(pubkey, usage_date)
 );
 
 -- Blossom write operations are opt-in. Existing settings are never overwritten.
 INSERT OR IGNORE INTO settings (key, value, category, description)
 VALUES ('blossom_enabled', 'false', 'blossom', 'Enable Blossom BUD-11 write operations');
-
-INSERT OR IGNORE INTO settings (key, value, category, description)
-VALUES
-    ('blossom_allow_hainei_clients_without_allowlist', 'true', 'blossom', 'Allow HaiNei clients to upload without pubkey allowlist checks'),
-    ('blossom_require_allowlist_for_non_hainei_clients', 'true', 'blossom', 'Require non-HaiNei short-lived token clients to pass pubkey allowlist checks');
 
 CREATE INDEX IF NOT EXISTS idx_files_timestamp ON files(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_files_directory ON files(directory);
@@ -140,6 +170,9 @@ CREATE INDEX IF NOT EXISTS idx_blossom_ownership_pubkey ON blossom_ownership(pub
 CREATE INDEX IF NOT EXISTS idx_blossom_allowed_pubkeys_created_at ON blossom_allowed_pubkeys(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_blossom_hainei_challenges_expires_at ON blossom_hainei_challenges(expires_at);
 CREATE INDEX IF NOT EXISTS idx_blossom_hainei_tokens_expires_at ON blossom_hainei_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_blossom_upload_tokens_expires_at ON blossom_upload_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_blossom_upload_tokens_subject_pubkey ON blossom_upload_tokens(subject_pubkey);
+CREATE INDEX IF NOT EXISTS idx_hainei_auth_challenges_expires_at ON hainei_auth_challenges(expires_at);
 
 CREATE TRIGGER IF NOT EXISTS update_files_updated_at 
     AFTER UPDATE ON files

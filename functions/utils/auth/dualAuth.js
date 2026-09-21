@@ -10,6 +10,7 @@ import { authenticate, AUTH_SCOPE } from './authCore.js';
  * @param {Object} env - 环境变量
  * @param {URL} url - 请求的URL
  * @param {Request} request - 请求对象
+ * API tokens require the explicit `list` permission on these read routes.
  * @returns {Promise<{authorized: boolean, authType: string|null}>}
  */
 export async function dualAuthCheck(env, url, request) {
@@ -17,7 +18,7 @@ export async function dualAuthCheck(env, url, request) {
         env,
         request,
         url,
-        requiredPermission: null,
+        requiredPermission: 'list',
         authScope: AUTH_SCOPE.EITHER,
     });
 }

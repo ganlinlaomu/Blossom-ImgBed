@@ -11,8 +11,8 @@ import { validateSession } from './sessionManager.js';
 
 /**
  * 认证范围常量
- * - 'admin'  : 仅管理员（admin session / API Token）
- * - 'user'   : 仅用户（user session / admin session / API Token / authCode）
+ * - 'admin'  : 管理员会话，或具备调用方所需显式权限的 API Token
+ * - 'user'   : 用户/管理员会话、authCode，或具备调用方所需显式权限的 API Token
  * - 'either' : 管理员或用户任一通过即可（所有认证方式）
  */
 export const AUTH_SCOPE = {
@@ -21,7 +21,7 @@ export const AUTH_SCOPE = {
     EITHER: 'either',
 };
 
-const AUTHORIZED = (authType) => ({ authorized: true, authType });
+const AUTHORIZED = (authType, metadata = {}) => ({ authorized: true, authType, ...metadata });
 const UNAUTHORIZED = { authorized: false, authType: null };
 
 /**
@@ -88,7 +88,7 @@ async function checkUser({ env, request, url, authCodeConfigured, userAuthCode }
  * @param {URL} [options.url] - 请求URL（authCode 提取需要）
  * @param {string|null} [options.requiredPermission] - API Token 所需权限
  * @param {'admin'|'user'|'either'} [options.authScope='either'] - 认证范围
- * @returns {Promise<{authorized: boolean, authType: 'admin'|'user'|null}>}
+ * @returns {Promise<{authorized: boolean, authType: 'admin'|'user'|'api_token'|null}>}
  */
 export async function authenticate({
     env,
@@ -110,8 +110,15 @@ export async function authenticate({
     const db = getDatabase(env);
     const tokenResult = await validateApiToken(request, db, requiredPermission);
     if (tokenResult.valid) {
-        return AUTHORIZED('admin');
+        return AUTHORIZED('api_token', {
+            tokenId: tokenResult.tokenData.id,
+            tokenType: tokenResult.tokenData.type,
+            owner: tokenResult.tokenData.owner,
+            permissions: tokenResult.tokenData.permissions,
+            expiresAt: tokenResult.tokenData.expiresAt,
+        });
     }
+    if (tokenResult.errorCode === 'upload_token_not_api') return UNAUTHORIZED;
 
     // --- 会话/凭据验证 ---
     const adminCtx = { env, request, adminConfigured };

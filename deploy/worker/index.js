@@ -46,6 +46,7 @@ import * as apiManageApiTokens from '../../functions/api/manage/apiTokens.js';
 import * as apiManageList from '../../functions/api/manage/list.js';
 import * as apiManageQuota from '../../functions/api/manage/quota.js';
 import * as apiPublicList from '../../functions/api/public/list.js';
+import * as apiServiceUploadToken from '../../functions/api/service/upload-token.js';
 import * as apiSystemDatabaseStatus from '../../functions/api/system/database-status.js';
 import * as uploadHuggingfaceCommitUpload from '../../functions/upload/huggingface/commitUpload.js';
 import * as uploadHuggingfaceCompleteMultipart from '../../functions/upload/huggingface/completeMultipart.js';
@@ -102,6 +103,7 @@ const routes = [
     { path: '/api/manage/list', module: apiManageList, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/manage/quota', module: apiManageQuota, middlewares: [mw_api, mw_api_manage] },
     { path: '/api/public/list', module: apiPublicList, middlewares: [mw_api] },
+    { path: '/api/service/upload-token', module: apiServiceUploadToken, middlewares: [mw_api] },
     { path: '/api/system/database-status', module: apiSystemDatabaseStatus, middlewares: [mw_api] },
     { path: '/upload/huggingface/commitUpload', module: uploadHuggingfaceCommitUpload, middlewares: [mw_upload] },
     { path: '/upload/huggingface/completeMultipart', module: uploadHuggingfaceCompleteMultipart, middlewares: [mw_upload] },

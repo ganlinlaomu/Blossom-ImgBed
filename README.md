@@ -2,10 +2,11 @@
 
 Blossom-ImgBed is a self-hosted [Blossom](https://github.com/hzrd149/blossom) media server for Nostr, powered by the CloudFlare-ImgBed multi-storage engine.
 
-It keeps the two trust domains deliberately separate:
+It keeps three trust domains deliberately separate:
 
 - Administrators sign in to the existing ImgBed Admin Dashboard to configure the server.
 - Nostr users never sign in to the website. A compatible client signs every upload or delete request using standard BUD-11 authorization.
+- Trusted backend integrations use explicitly permissioned API service tokens. A service token with only `issue_upload_token` may mint a short-lived, per-pubkey upload token; it is not an administrator.
 
 Blossom is a protocol and authorization layer. Files continue to use the existing ImgBed routing, quota, load-balancing, and storage implementations for Cloudflare R2, Telegram, S3-compatible storage, WebDAV, Hugging Face, and Discord.
 
@@ -22,7 +23,7 @@ Public /                         Blossom API
                       └─ Pubkey allowlist
 ```
 
-Allowlist membership grants only the right to call signed Blossom write/delete APIs. It does not create a web session, ImgBed user, Admin session, password, or access to `/api/manage/*`.
+External Nostr uploads always require allowlist membership. Client names, versions, headers, origins, referrers, and user agents never affect authorization. Service-issued tokens are a separate upload-only path and cannot access `/api/manage/*`, issue another token, list media, or delete media.
 
 ## Fresh install on Cloudflare
 
@@ -50,16 +51,7 @@ Passwords retain PBKDF2 storage, legacy SHA-256 and plaintext compatibility, aut
 
 ## Upgrade an existing ImgBed database
 
-Back up the database, then apply the non-destructive Blossom migrations in order:
-
-```text
-database/migrations/v2.8.0_add_blossom_metadata.sql
-database/migrations/v2.9.0_add_blossom_allowlist.sql
-database/migrations/v2.10.0_add_blossom_settings.sql
-database/migrations/v2.11.0_add_blossom_hainei_access.sql
-```
-
-The migrations only add Blossom tables/indexes and the default disabled setting. They do not delete or rewrite existing files, settings, metadata, or storage configuration.
+Back up the database, then apply every unapplied file in `database/migrations/` in version order. The current service-token migration adds `blossom_upload_tokens` and the shared `hainei_*` tables and removes obsolete active settings. Deprecated tables are retained temporarily for safe upgrades; existing files and storage configuration are not rewritten.
 
 ## Using the server
 
@@ -77,21 +69,27 @@ Disabling Blossom rejects signed `PUT` and `DELETE` operations with `403 {"error
 
 There is no Blossom web login or web upload dashboard. Add the server URL to a compatible Nostr client. The client uses the user's private key to sign each standard BUD-11 request; the server verifies the kind `24242` event, signature, action, expiration, server/hash scope, and pubkey allowlist before invoking ImgBed storage.
 
-### HaiNei client
+### Service integrations (including HaiNei)
 
-HaiNei can exchange a Nostr-signed one-time challenge for a short-lived upload token (`blossom:upload`, default 1 hour). The short-lived token is valid for Blossom uploads only and does not grant admin/settings/allowlist/user/storage management access.
+Create an existing API token with `type: "service"` and the single permission `issue_upload_token`. The trusted backend calls `POST /api/service/upload-token`; the raw result is returned once and only its SHA-256 hash is stored in D1. The default TTL is 3600 seconds and the maximum is configurable up to 86400 seconds. The token scope is exactly `upload` and its subject is a 64-character hex Nostr pubkey.
+
+An authenticated administrator can create it through the existing `POST /api/manage/apiTokens` API with `{"name":"HaiNei Backend","type":"service","owner":"hainei-worker","permissions":["issue_upload_token"]}`. Store the returned raw value directly as the backend secret; it is not a frontend token.
 
 ## Blossom endpoints
 
 ```text
 HEAD   /upload
 PUT    /upload
+POST   /upload (raw Blossom upload when using a short-lived upload token)
 GET    /<sha256>[.<ext>]
 HEAD   /<sha256>[.<ext>]
 DELETE /<sha256>[.<ext>]
-POST   /api/hainei/challenge
-POST   /api/hainei/token
+POST   /api/service/upload-token
 ```
+
+Issuer request: `{"subject":"<64-char hex pubkey>","ttl":3600}` with `Authorization: Bearer <service API token>`. Success is `201` with `token`, `subject`, `scope`, `issuedAt`, and `expiresAt`. Uploads send `Authorization: Bearer <short-lived token>` to `HEAD`, `PUT`, or supported raw `POST /upload`.
+
+`BLOSSOM_UPLOAD_TOKEN_MAX_TTL_SECONDS` controls the issuer ceiling. `HAINEI_MAX_FILE_SIZE_BYTES`, `HAINEI_DAILY_UPLOAD_COUNT`, and `HAINEI_DAILY_UPLOAD_BYTES` enforce the same upload limits at Blossom, where the actual file size is known; keep them aligned with the HaiNei Worker values.
 
 Management endpoints are protected by the existing Admin middleware:
 

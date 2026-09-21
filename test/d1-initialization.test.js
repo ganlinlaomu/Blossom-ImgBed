@@ -33,6 +33,10 @@ const clientAwareAllowlistMigration = readFileSync(
     new URL('../database/migrations/v2.12.0_add_client_aware_allowlist.sql', import.meta.url),
     'utf8',
 );
+const serviceUploadTokensMigration = readFileSync(
+    new URL('../database/migrations/v2.13.0_add_service_upload_tokens.sql', import.meta.url),
+    'utf8',
+);
 
 function loginRequest(username = 'admin', password = 'secret') {
     return new Request('https://img.example/api/auth/adminLogin', {
@@ -158,12 +162,16 @@ describe('D1 initialization diagnostics', () => {
         img_d1.exec(settingsMigration);
         img_d1.exec(haiNeiAccessMigration);
         img_d1.exec(clientAwareAllowlistMigration);
+        img_d1.exec(serviceUploadTokensMigration);
 
         const preserved = await img_d1.prepare(
             "SELECT value FROM files WHERE id = 'existing-file'"
         ).first();
         assert.equal(preserved.value, 'value');
         assert.equal((await img_d1.prepare("SELECT value FROM settings WHERE key = 'blossom_enabled'").first()).value, 'false');
+        assert.equal(await img_d1.prepare(
+            "SELECT value FROM settings WHERE key = 'blossom_allow_hainei_clients_without_allowlist'"
+        ).first(), null);
         assert.equal((await checkDatabaseInitialization({ img_d1 })).initialized, true);
     });
 

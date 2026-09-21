@@ -4,8 +4,8 @@ import { assertSha256, readAndHashRequest } from './hash.js';
 import { addOwnership, deleteBlob, getBlob, putBlob } from './metadata.js';
 import { getImgBedRecord, uploadViaImgBed } from './imgbed.js';
 import { isPubkeyAllowed } from './allowlist.js';
-import { authenticateHaiNeiUploadToken } from './hainei-access.js';
-import { getBlossomSettings } from './settings.js';
+import { authenticateUploadToken } from './upload-token.js';
+import { assertUploadQuota, releaseUploadQuota, reserveUploadQuota } from './upload-quota.js';
 
 const MIME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*;.*)?$/;
 
@@ -40,8 +40,10 @@ function parseLength(value, headerName, { required = false } = {}) {
 export function createUploadPreflightHandler(dependencies = {}) {
     const deps = {
         authenticate: authenticateBud11,
+        authenticateUploadToken,
         isPubkeyAllowed,
         isEnabled: isBlossomEnabled,
+        assertUploadQuota,
         ...dependencies,
     };
 
@@ -55,14 +57,20 @@ export function createUploadPreflightHandler(dependencies = {}) {
                 context.request.headers.get('X-SHA-256'),
                 'HEAD /upload requires a lowercase X-SHA-256 header'
             );
-            const { pubkey } = deps.authenticate(context.request, context.env, {
-                action: 'upload', sha256: authorizedHash, requireHash: true,
-            });
-            if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
-                return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+            const uploadTokenAuth = await deps.authenticateUploadToken(context.request, context.env);
+            if (!uploadTokenAuth.authorized) {
+                const { pubkey } = deps.authenticate(context.request, context.env, {
+                    action: 'upload', sha256: authorizedHash, requireHash: true,
+                });
+                if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
+                    return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
+                }
             }
 
-            parseLength(context.request.headers.get('X-Content-Length'), 'X-Content-Length', { required: true });
+            const contentLength = parseLength(context.request.headers.get('X-Content-Length'), 'X-Content-Length', { required: true });
+            if (uploadTokenAuth.authorized) {
+                await deps.assertUploadQuota(context.env, uploadTokenAuth.pubkey, contentLength);
+            }
             normalizeMimeType(context.request.headers.get('X-Content-Type'));
 
             return new Response(null, {
@@ -86,19 +94,10 @@ export function blobDescriptor(request, blob) {
     };
 }
 
-function shouldBypassAllowlist(clientInfo, settings) {
-    if (!settings?.enabled) return false;
-    if (clientInfo?.isHaiNeiClient) {
-        return settings.allowHaiNeiClientsWithoutAllowlist !== false;
-    }
-    return settings.requireAllowlistForNonHaiNeiClients === false;
-}
-
 export function createUploadHandler(dependencies = {}) {
     const deps = {
         authenticate: authenticateBud11,
-        authenticateHaiNeiUpload: authenticateHaiNeiUploadToken,
-        getSettings: getBlossomSettings,
+        authenticateUploadToken,
         readAndHash: readAndHashRequest,
         getBlob,
         putBlob,
@@ -108,10 +107,14 @@ export function createUploadHandler(dependencies = {}) {
         uploadViaImgBed,
         isPubkeyAllowed,
         isEnabled: isBlossomEnabled,
+        assertUploadQuota,
+        reserveUploadQuota,
+        releaseUploadQuota,
         ...dependencies,
     };
 
     return async function handleUpload(context, processFileUpload) {
+        let quotaReservation = null;
         try {
             if (!await deps.isEnabled(context.env)) {
                 return jsonResponse({ error: 'blossom_disabled' }, 403, { 'Cache-Control': 'no-store' });
@@ -122,15 +125,11 @@ export function createUploadHandler(dependencies = {}) {
                 hashHeader,
                 'PUT /upload X-SHA-256 header must be a lowercase SHA-256 hash'
             );
-            const haiNeiAuth = await deps.authenticateHaiNeiUpload(context.request, context.env);
+            const uploadTokenAuth = await deps.authenticateUploadToken(context.request, context.env);
             let pubkey;
             let event = null;
-            if (haiNeiAuth.authorized) {
-                pubkey = haiNeiAuth.pubkey;
-                const settings = await deps.getSettings(context.env);
-                if (!shouldBypassAllowlist(haiNeiAuth.clientInfo, settings) && !await deps.isPubkeyAllowed(context.env, pubkey)) {
-                    return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
-                }
+            if (uploadTokenAuth.authorized) {
+                pubkey = uploadTokenAuth.pubkey;
             } else {
                 ({ event, pubkey } = deps.authenticate(context.request, context.env, {
                     action: 'upload',
@@ -148,7 +147,7 @@ export function createUploadHandler(dependencies = {}) {
             if (authorizedHash && body.sha256 !== authorizedHash) {
                 throw new BlossomError(409, 'X-SHA-256 and BUD-11 hash do not match the uploaded blob');
             }
-            if (!authorizedHash && !haiNeiAuth.authorized) {
+            if (!authorizedHash && !uploadTokenAuth.authorized) {
                 const signedHashes = event.tags
                     .filter(tag => tag[0] === 'x')
                     .map(tag => tag[1]);
@@ -158,6 +157,10 @@ export function createUploadHandler(dependencies = {}) {
             }
             if (declaredLength !== null && declaredLength !== body.size) {
                 throw new BlossomError(400, 'Content-Length does not match the uploaded blob');
+            }
+            if (uploadTokenAuth.authorized) {
+                await deps.reserveUploadQuota(context.env, pubkey, body.size);
+                quotaReservation = { pubkey, size: body.size };
             }
 
             let blob = await deps.getBlob(context.env, body.sha256);
@@ -180,6 +183,13 @@ export function createUploadHandler(dependencies = {}) {
             await deps.addOwnership(context.env, blob.sha256, pubkey, blob.uploaded);
             return jsonResponse(blobDescriptor(context.request, blob), 201);
         } catch (error) {
+            if (quotaReservation) {
+                try {
+                    await deps.releaseUploadQuota(context.env, quotaReservation.pubkey, quotaReservation.size);
+                } catch (releaseError) {
+                    console.error('Failed to release reserved HaiNei upload quota', releaseError);
+                }
+            }
             return errorResponse(error);
         }
     };

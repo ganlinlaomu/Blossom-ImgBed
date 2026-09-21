@@ -2,10 +2,11 @@
 
 Blossom-ImgBed 是一个面向 Nostr 的自托管 Blossom 媒体服务器，底层复用 CloudFlare-ImgBed 的多存储引擎。
 
-它严格分离两类身份：
+它严格分离三类身份：
 
 - 管理员登录现有 ImgBed Admin Dashboard，管理服务器配置。
 - Nostr 用户不登录网站。兼容 Blossom 的客户端为每次上传或删除签署标准 BUD-11 请求。
+- 可信后端使用权限明确的 API service token。只有 `issue_upload_token` 权限的 service token 可以签发绑定 pubkey 的短期上传 token，它不是管理员身份。
 
 Blossom 只提供协议与认证层。文件继续使用 ImgBed 现有的渠道选择、容量过滤、路由、负载均衡，以及 Cloudflare R2、Telegram、S3、WebDAV、Hugging Face、Discord 存储实现。
 
@@ -22,7 +23,7 @@ Blossom 只提供协议与认证层。文件继续使用 ImgBed 现有的渠道�
                       └─ pubkey 白名单
 ```
 
-白名单只授予已签名 Blossom 写入/删除 API 的权限，不会创建 Web Session、ImgBed 用户、Admin Session、用户名或密码，也不能访问 `/api/manage/*`。
+外部 Nostr 上传始终需要 pubkey 白名单。客户端名称、版本、请求头、Origin、Referer、User-Agent 均不参与授权。service 签发的 token 是独立的 upload-only 路径，不能访问 `/api/manage/*`、继续签发 token、列出或删除媒体。
 
 ## Cloudflare 全新部署
 
@@ -48,16 +49,7 @@ Blossom 只提供协议与认证层。文件继续使用 ImgBed 现有的渠道�
 
 ## 升级已有 ImgBed 数据库
 
-备份数据库后，依次执行非破坏性迁移：
-
-```text
-database/migrations/v2.8.0_add_blossom_metadata.sql
-database/migrations/v2.9.0_add_blossom_allowlist.sql
-database/migrations/v2.10.0_add_blossom_settings.sql
-database/migrations/v2.11.0_add_blossom_hainei_access.sql
-```
-
-这些迁移只增加 Blossom 表、索引和默认关闭的设置，不会删除或覆盖原文件、settings、metadata 或存储配置。
+备份数据库后，按版本顺序执行 `database/migrations/` 中所有尚未执行的迁移。当前 service-token 迁移会新增 `blossom_upload_tokens` 与共享的 `hainei_*` 表，并删除已废弃的活动设置；旧表暂时保留以确保升级安全，不会改写现有文件和存储配置。
 
 ## 使用方式
 
@@ -75,9 +67,11 @@ database/migrations/v2.11.0_add_blossom_hainei_access.sql
 
 本项目不提供 Blossom Web Login、NIP-07 登录或 Web Upload Dashboard。用户只需把 Server URL 添加到兼容客户端。客户端用用户私钥签署 BUD-11 请求；服务器验证 kind `24242`、签名、action、expiration、server/hash scope 和 pubkey 白名单后，调用 ImgBed 存储引擎。
 
-### HaiNei 客户端
+### Service 集成（包括 HaiNei）
 
-HaiNei 可通过一次性 challenge + Nostr 签名换取短期上传 token（`blossom:upload`，默认 1 小时）。该 token 仅能用于 Blossom 上传，不具备管理员、设置、白名单、用户管理或存储后端管理权限。
+使用现有 API Token 系统创建 `type: "service"`、且权限仅为 `issue_upload_token` 的 token。可信后端调用 `POST /api/service/upload-token`；原始短期 token 只返回一次，D1 只保存 SHA-256 哈希。默认 TTL 为 3600 秒，可配置的安全上限为 86400 秒。scope 固定为 `upload`，subject 必须是 64 位十六进制 Nostr pubkey。
+
+管理员登录后可调用现有 `POST /api/manage/apiTokens`，请求 JSON 为 `{"name":"HaiNei Backend","type":"service","owner":"hainei-worker","permissions":["issue_upload_token"]}`。返回的原始值应直接保存为后端 secret，不能作为前端 token。
 
 ## API
 
@@ -86,12 +80,16 @@ Blossom：
 ```text
 HEAD   /upload
 PUT    /upload
+POST   /upload（短期上传 token 的 raw Blossom 上传）
 GET    /<sha256>[.<ext>]
 HEAD   /<sha256>[.<ext>]
 DELETE /<sha256>[.<ext>]
-POST   /api/hainei/challenge
-POST   /api/hainei/token
+POST   /api/service/upload-token
 ```
+
+签发请求使用 `Authorization: Bearer <service API token>`，JSON 为 `{"subject":"<64位十六进制pubkey>","ttl":3600}`。成功返回 `201`，包含 `token`、`subject`、`scope`、`issuedAt`、`expiresAt`。上传时向 `HEAD`、`PUT` 或受支持的 raw `POST /upload` 发送短期 Bearer token。
+
+`BLOSSOM_UPLOAD_TOKEN_MAX_TTL_SECONDS` 控制签发上限。`HAINEI_MAX_FILE_SIZE_BYTES`、`HAINEI_DAILY_UPLOAD_COUNT`、`HAINEI_DAILY_UPLOAD_BYTES` 在可获得真实文件大小的 Blossom 端再次强制执行配额，应与 HaiNei Worker 配置保持一致。
 
 由现有 Admin 中间件保护的管理 API：
 

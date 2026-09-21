@@ -84,6 +84,41 @@ describe('Blossom upload', () => {
         assert.deepEqual(await deniedResponse.json(), { error: 'pubkey_not_allowed' });
     });
 
+    it('accepts a valid short-lived token for HEAD and ignores client-claiming metadata', async () => {
+        const hash = 'd'.repeat(64);
+        let nostrCalls = 0;
+        let allowlistCalls = 0;
+        const tokenHandler = createUploadPreflightHandler({
+            authenticate: () => { nostrCalls++; throw new Error('unexpected'); },
+            authenticateUploadToken: async () => ({ authorized: true, pubkey: PUBKEY_B }),
+            isPubkeyAllowed: async () => { allowlistCalls++; return false; },
+            assertUploadQuota: async () => {},
+        });
+        const accepted = await tokenHandler(context(new Request('https://blossom.example/upload?client=trusted-product', {
+            method: 'HEAD', headers: {
+                Authorization: 'Bearer imgbed_upload_test',
+                'X-Claimed-Client': 'trusted-product', 'User-Agent': 'trusted-product',
+                'X-SHA-256': hash, 'X-Content-Type': 'image/png', 'X-Content-Length': '10',
+            },
+        })));
+        assert.equal(accepted.status, 200);
+        assert.equal(nostrCalls, 0);
+        assert.equal(allowlistCalls, 0);
+
+        const nostrHandler = createUploadPreflightHandler({
+            authenticate: () => ({ pubkey: PUBKEY_B }),
+            authenticateUploadToken: async () => ({ matched: false, authorized: false }),
+            isPubkeyAllowed: async () => false,
+        });
+        const denied = await nostrHandler(context(new Request('https://blossom.example/upload?client=trusted-product', {
+            method: 'HEAD', headers: {
+                'X-Claimed-Client': 'trusted-product', Origin: 'https://trusted.example',
+                'X-SHA-256': hash, 'X-Content-Type': 'image/png', 'X-Content-Length': '10',
+            },
+        })));
+        assert.equal(denied.status, 403);
+    });
+
     it('uploads an authorized blob through the existing ImgBed pipeline', async () => {
         const bytes = new TextEncoder().encode('hello blossom');
         const hash = await sha256Hex(bytes);
@@ -143,25 +178,21 @@ describe('Blossom upload', () => {
         assert.equal(pipelineCalls, 1);
     });
 
-    it('accepts HaiNei upload token without requiring allowlist auth', async () => {
-        const bytes = new TextEncoder().encode('hainei short-lived upload');
+    it('accepts a short-lived upload token without applying the Nostr allowlist', async () => {
+        const bytes = new TextEncoder().encode('short-lived upload');
         const hash = await sha256Hex(bytes);
         let bud11Calls = 0;
         let pipelineCalls = 0;
         let allowlistChecks = 0;
         const handler = createUploadHandler({
             authenticate: () => { bud11Calls++; return { pubkey: PUBKEY_A }; },
-            authenticateHaiNeiUpload: async () => ({
+            authenticateUploadToken: async () => ({
                 authorized: true,
                 pubkey: PUBKEY_B,
-                clientInfo: { isHaiNeiClient: true },
-            }),
-            getSettings: async () => ({
-                enabled: true,
-                allowHaiNeiClientsWithoutAllowlist: true,
-                requireAllowlistForNonHaiNeiClients: true,
             }),
             isPubkeyAllowed: async () => { allowlistChecks++; return false; },
+            reserveUploadQuota: async () => {},
+            releaseUploadQuota: async () => {},
             getBlob: async () => null,
             putBlob: async () => {},
             addOwnership: async () => {},
@@ -178,56 +209,18 @@ describe('Blossom upload', () => {
         assert.equal(allowlistChecks, 0);
     });
 
-    it('requires allowlist for non-HaiNei short-lived tokens by default', async () => {
-        const bytes = new TextEncoder().encode('non-hainei short-lived upload');
+    it('accepts the same short-lived token path for POST /upload', async () => {
+        const bytes = new TextEncoder().encode('post short-lived upload');
         const hash = await sha256Hex(bytes);
-        let allowlistChecks = 0;
-        let pipelineCalls = 0;
         const handler = createUploadHandler({
-            authenticateHaiNeiUpload: async () => ({
-                authorized: true,
-                pubkey: PUBKEY_B,
-                clientInfo: { isHaiNeiClient: false },
-            }),
-            getSettings: async () => ({
-                enabled: true,
-                allowHaiNeiClientsWithoutAllowlist: true,
-                requireAllowlistForNonHaiNeiClients: true,
-            }),
-            isPubkeyAllowed: async () => { allowlistChecks++; return false; },
-            uploadViaImgBed: async () => { pipelineCalls++; },
+            authenticateUploadToken: async () => ({ authorized: true, pubkey: PUBKEY_B }),
+            reserveUploadQuota: async () => {}, releaseUploadQuota: async () => {},
+            getBlob: async () => null, putBlob: async () => {}, addOwnership: async () => {},
+            uploadViaImgBed: async () => `blossom/${hash}.txt`,
         });
-        const response = await handler(context(await uploadRequest(bytes, hash)), () => {});
-        assert.equal(response.status, 403);
-        assert.deepEqual(await response.json(), { error: 'pubkey_not_allowed' });
-        assert.equal(allowlistChecks, 1);
-        assert.equal(pipelineCalls, 0);
-    });
-
-    it('applies allowlist to HaiNei clients when bypass is disabled', async () => {
-        const bytes = new TextEncoder().encode('hainei allowlist enforced');
-        const hash = await sha256Hex(bytes);
-        let allowlistChecks = 0;
-        let pipelineCalls = 0;
-        const handler = createUploadHandler({
-            authenticateHaiNeiUpload: async () => ({
-                authorized: true,
-                pubkey: PUBKEY_B,
-                clientInfo: { isHaiNeiClient: true },
-            }),
-            getSettings: async () => ({
-                enabled: true,
-                allowHaiNeiClientsWithoutAllowlist: false,
-                requireAllowlistForNonHaiNeiClients: true,
-            }),
-            isPubkeyAllowed: async () => { allowlistChecks++; return false; },
-            uploadViaImgBed: async () => { pipelineCalls++; },
-        });
-        const response = await handler(context(await uploadRequest(bytes, hash)), () => {});
-        assert.equal(response.status, 403);
-        assert.deepEqual(await response.json(), { error: 'pubkey_not_allowed' });
-        assert.equal(allowlistChecks, 1);
-        assert.equal(pipelineCalls, 0);
+        const request = await uploadRequest(bytes, hash);
+        const post = new Request(request.url, { method: 'POST', headers: request.headers, body: bytes });
+        assert.equal((await handler(context(post), () => {})).status, 201);
     });
 
     it('rejects PUT without X-SHA-256 when the signed x tag does not cover the body', async () => {

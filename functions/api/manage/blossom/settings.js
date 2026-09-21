@@ -21,23 +21,7 @@ export async function onRequestPost({ env, request }) {
         if (typeof body?.enabled !== 'boolean') {
             return json({ error: 'enabled_must_be_boolean' }, 400);
         }
-        if (
-            body.allowHaiNeiClientsWithoutAllowlist !== undefined
-            && typeof body.allowHaiNeiClientsWithoutAllowlist !== 'boolean'
-        ) {
-            return json({ error: 'allow_hainei_clients_without_allowlist_must_be_boolean' }, 400);
-        }
-        if (
-            body.requireAllowlistForNonHaiNeiClients !== undefined
-            && typeof body.requireAllowlistForNonHaiNeiClients !== 'boolean'
-        ) {
-            return json({ error: 'require_allowlist_for_non_hainei_clients_must_be_boolean' }, 400);
-        }
-        await setBlossomSettings(env, {
-            enabled: body.enabled,
-            allowHaiNeiClientsWithoutAllowlist: body.allowHaiNeiClientsWithoutAllowlist,
-            requireAllowlistForNonHaiNeiClients: body.requireAllowlistForNonHaiNeiClients,
-        });
+        await setBlossomSettings(env, { enabled: body.enabled });
         return json(await getBlossomSettings(env, request));
     } catch (error) {
         if (error instanceof SyntaxError) return json({ error: 'invalid_json' }, 400);

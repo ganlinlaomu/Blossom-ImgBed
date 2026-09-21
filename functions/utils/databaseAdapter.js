@@ -14,6 +14,10 @@ export const REQUIRED_D1_TABLES = Object.freeze([
     'blossom_blobs',
     'blossom_ownership',
     'blossom_allowed_pubkeys',
+    'blossom_upload_tokens',
+    'hainei_users',
+    'hainei_auth_challenges',
+    'hainei_media_usage',
 ]);
 
 /**

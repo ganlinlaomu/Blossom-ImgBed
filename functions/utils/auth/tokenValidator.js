@@ -7,13 +7,13 @@ import { isExpired } from './tokenExpiration.js';
  * @param {Request} request - 请求对象
  * @param {Object} db - 数据库适配器
  * @param {string} requiredPermission - 需要的权限 ('upload', 'delete', 'list')
- * @returns {Promise<{valid: boolean, error?: string}>}
+ * @returns {Promise<{valid: boolean, error?: string, tokenData?: object}>}
  */
 export async function validateApiToken(request, db, requiredPermission) {
     const authHeader = request.headers.get('Authorization');
     
     if (!authHeader) {
-        return { valid: false, error: '缺少Authorization头' };
+        return { valid: false, error: '缺少Authorization头', errorCode: 'missing_authorization' };
     }
 
     let token;
@@ -26,27 +26,42 @@ export async function validateApiToken(request, db, requiredPermission) {
     }
 
     if (!token) {
-        return { valid: false, error: '无效的Token格式' };
+        return { valid: false, error: '无效的Token格式', errorCode: 'invalid_token' };
+    }
+    if (token.startsWith('imgbed_upload_')) {
+        return { valid: false, error: '短期上传Token不能用于此API', errorCode: 'upload_token_not_api' };
     }
 
     // 获取完整Token数据
     const tokenData = await getTokenData(db, token);
     
     if (!tokenData) {
-        return { valid: false, error: '无效的Token' };
+        return { valid: false, error: '无效的Token', errorCode: 'invalid_token' };
     }
 
     // 检查Token是否已过期
     if (isExpired(tokenData.expiresAt)) {
-        return { valid: false, error: 'Token 已过期' };
+        return { valid: false, error: 'Token 已过期', errorCode: 'expired_token' };
     }
 
     // 检查权限，如果不需要特定权限（requiredPermission为null），则只要token有效就通过
+    if (requiredPermission !== null && !Array.isArray(tokenData.permissions)) {
+        return { valid: false, error: `缺少${requiredPermission}权限`, errorCode: 'missing_permission' };
+    }
     if (requiredPermission !== null && !tokenData.permissions.includes(requiredPermission)) {
-        return { valid: false, error: `缺少${requiredPermission}权限` };
+        return { valid: false, error: `缺少${requiredPermission}权限`, errorCode: 'missing_permission' };
     }
 
-    return { valid: true };
+    return {
+        valid: true,
+        tokenData: {
+            id: tokenData.id,
+            type: tokenData.type || 'user',
+            owner: tokenData.owner,
+            permissions: Array.isArray(tokenData.permissions) ? [...tokenData.permissions] : [],
+            expiresAt: tokenData.expiresAt ?? null,
+        },
+    };
 }
 
 /**

@@ -25,7 +25,10 @@ export async function onRequest(context) {  // Contents of context object
     if (request.method === 'HEAD') {
         return handleBlossomUploadPreflight(context);
     }
-    if (request.method === 'PUT') {
+    if (request.method === 'PUT' || (
+        request.method === 'POST'
+        && /^Bearer\s+imgbed_upload_/i.test(request.headers.get('Authorization') || '')
+    )) {
         return handleBlossomUpload(context, processFileUpload);
     }
 

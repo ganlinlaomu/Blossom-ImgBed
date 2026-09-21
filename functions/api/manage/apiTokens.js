@@ -25,9 +25,9 @@ export async function onRequest(context) {
     // POST - 创建新Token
     if (method === 'POST') {
         const body = await request.json()
-        const { name, permissions, owner, expiresAt = null, autoDelete = false } = body
+        const { name, permissions, owner, expiresAt = null, autoDelete = false, type = 'user' } = body
 
-        if (!name || !permissions || !owner) {
+        if (!name || !Array.isArray(permissions) || permissions.length === 0 || !owner) {
             return new Response(JSON.stringify({ error: '缺少必要参数' }), {
                 status: 400,
                 headers: {
@@ -36,7 +36,14 @@ export async function onRequest(context) {
             })
         }
 
-        const token = await createApiToken(db, name, permissions, owner, expiresAt, autoDelete)
+        if (!['user', 'service'].includes(type)) {
+            return new Response(JSON.stringify({ error: '无效的Token类型' }), {
+                status: 400,
+                headers: { 'content-type': 'application/json' },
+            })
+        }
+
+        const token = await createApiToken(db, name, permissions, owner, expiresAt, autoDelete, type)
         return new Response(JSON.stringify(token), {
             headers: {
                 'content-type': 'application/json',
@@ -106,6 +113,7 @@ async function getApiTokens(db) {
                 id,
                 name: token.name,
                 owner: token.owner,
+                type: token.type || 'user',
                 permissions: token.permissions,
                 createdAt: token.createdAt,
                 updatedAt: token.updatedAt,
@@ -131,6 +139,7 @@ async function getApiTokens(db) {
         id: t.id,
         name: t.name,
         owner: t.owner,
+        type: t.type || 'user',
         permissions: t.permissions,
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
@@ -160,8 +169,8 @@ export async function createApiToken(db, name, permissions, owner, expiresAt = n
         name,
         token,
         owner,
-        permissions,
         type,
+        permissions,
         createdAt: now,
         updatedAt: now,
         expiresAt: expiresAt ?? null,
@@ -182,7 +191,8 @@ export async function createApiToken(db, name, permissions, owner, expiresAt = n
         createdAt: now,
         updatedAt: now,
         expiresAt: tokenData.expiresAt,
-        autoDelete: tokenData.autoDelete
+        autoDelete: tokenData.autoDelete,
+        type: tokenData.type
     }
 }
 
@@ -269,10 +279,11 @@ export async function getTokenData(db, token) {
         if (tokens[tokenId].token === token) {
             const t = tokens[tokenId]
             return {
-                id: t.id,
+                id: t.id || tokenId,
                 name: t.name,
                 token: t.token,
                 owner: t.owner,
+                type: t.type || 'user',
                 permissions: t.permissions,
                 createdAt: t.createdAt,
                 updatedAt: t.updatedAt,
