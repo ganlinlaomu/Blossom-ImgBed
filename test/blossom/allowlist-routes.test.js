@@ -14,6 +14,7 @@ const UNKNOWN = '2'.repeat(64);
 
 function context(env, request) {
     env.img_url.put('blossom_enabled', 'true');
+
     return { env, request, data: {}, waitUntil() {} };
 }
 
@@ -31,6 +32,8 @@ describe('Blossom write allowlist enforcement', () => {
         const hash = await sha256Hex(bytes);
         let uploads = 0;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: ALLOWED }),
             getBlob: async () => null,
             uploadViaImgBed: async () => { uploads++; return 'stored.txt'; },
@@ -49,6 +52,8 @@ describe('Blossom write allowlist enforcement', () => {
         let bodyReads = 0;
         let uploads = 0;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: ALLOWED }),
             readAndHash: async () => { bodyReads++; },
             uploadViaImgBed: async () => { uploads++; },
@@ -66,6 +71,8 @@ describe('Blossom write allowlist enforcement', () => {
         const hash = await sha256Hex(bytes);
         let allowlistChecks = 0;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => { throw new BlossomError(401, 'Invalid Nostr event signature'); },
             isPubkeyAllowed: async () => { allowlistChecks++; return true; },
         });
@@ -81,6 +88,7 @@ describe('Blossom write allowlist enforcement', () => {
         const blob = { sha256: hash, imgbedId: 'stored.bin', size: 1, type: 'application/octet-stream', uploaded: 1 };
         let physicalDeletes = 0;
         const dependencies = {
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: ALLOWED }), getBlob: async () => blob,
             hasOwnership: async () => true, removeOwnership: async () => {}, countOwnerships: async () => 0,
             deleteViaImgBed: async () => { physicalDeletes++; return true; }, deleteBlob: async () => {},

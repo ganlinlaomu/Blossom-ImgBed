@@ -52,7 +52,7 @@ export async function uploadViaImgBed(context, file, sha256, processFileUpload) 
     const response = await processFileUpload(uploadContext, formdata);
     if (!response.ok) {
         throw new BlossomError(response.status >= 400 && response.status < 500 ? response.status : 502,
-            `ImgBed upload pipeline failed: ${await response.text()}`);
+            'ImgBed upload pipeline failed');
     }
 
     let payload;

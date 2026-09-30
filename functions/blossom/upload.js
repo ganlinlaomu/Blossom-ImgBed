@@ -1,3 +1,4 @@
+import { acquireBlobLock, releaseBlobLock, acquireUploadSlot, releaseUploadSlot } from './blob-lock.js';
 import { authenticateBud11, isBlossomEnabled } from './auth.js';
 import { BlossomError, blossomHeaders, errorResponse, jsonResponse } from './errors.js';
 import { assertSha256, readAndHashRequest } from './hash.js';
@@ -124,6 +125,10 @@ export function blobDescriptor(request, blob) {
 
 export function createUploadHandler(dependencies = {}) {
     const deps = {
+        acquireUploadSlot,
+        releaseUploadSlot,
+        acquireBlobLock,
+        releaseBlobLock,
         authenticate: authenticateBud11,
         authenticateUploadToken,
         consumeBoundUploadToken,
@@ -144,6 +149,8 @@ export function createUploadHandler(dependencies = {}) {
 
     return async function handleUpload(context, processFileUpload) {
         let quotaReservation = null;
+        let blobLock = null;
+        let uploadSlot = null;
         try {
             if (!(await deps.isEnabled(context.env))) {
                 return jsonResponse({ error: 'blossom_disabled' }, 403, {
@@ -176,6 +183,7 @@ export function createUploadHandler(dependencies = {}) {
             const declaredLength = parseLength(context.request.headers.get('Content-Length'), 'Content-Length');
 
             const type = normalizeMimeType(context.request.headers.get('Content-Type'));
+            uploadSlot = await deps.acquireUploadSlot(context.env);
             const maximum = uploadTokenAuth.maxBytes || uploadQuotaPolicy(context.env).maxFileSize;
             const body = await deps.readAndHash(context.request, maximum);
             if (authorizedHash && body.sha256 !== authorizedHash) {
@@ -190,6 +198,7 @@ export function createUploadHandler(dependencies = {}) {
             if (declaredLength !== null && declaredLength !== body.size) {
                 throw new BlossomError(400, 'Content-Length does not match the uploaded blob');
             }
+            blobLock = await deps.acquireBlobLock(context.env, body.sha256, 'upload');
             if (uploadTokenAuth.authorized) {
                 await deps.consumeBoundUploadToken(context.env, uploadTokenAuth, body.sha256, body.size);
                 const usageDate = await deps.reserveUploadQuota(context.env, pubkey, body.size);
@@ -229,6 +238,15 @@ export function createUploadHandler(dependencies = {}) {
                 }
             }
             return errorResponse(error);
+        } finally {
+            if (uploadSlot) {
+                try { await deps.releaseUploadSlot(context.env, uploadSlot); }
+                catch (error) { console.error('Failed to release Blossom upload slot:', error); }
+            }
+            if (blobLock) {
+                try { await deps.releaseBlobLock(context.env, blobLock); }
+                catch (error) { console.error('Failed to release Blossom operation lock:', error); }
+            }
         }
     };
 }

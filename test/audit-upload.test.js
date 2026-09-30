@@ -1,6 +1,6 @@
-import { test } from "node:test";
+import { it as test } from "mocha";
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
+import Database from "better-sqlite3";
 import { readFileSync } from "node:fs";
 import {
   issueUploadToken,
@@ -13,7 +13,7 @@ import {
 } from "../functions/blossom/upload-quota.js";
 import { readAndHashRequest } from "../functions/blossom/hash.js";
 function environment() {
-  const sql = new DatabaseSync(":memory:");
+  const sql = new Database(":memory:");
   sql.exec(
     readFileSync(new URL("../database/init.sql", import.meta.url), "utf8"),
   );

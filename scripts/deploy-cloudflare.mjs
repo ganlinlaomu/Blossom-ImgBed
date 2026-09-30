@@ -220,6 +220,28 @@ export async function deployCloudflare(options = {}) {
         throwStepFailure('数据库 migration/schema 初始化失败', 'Database migration/schema initialization failed', result);
     }
 
+    // init.sql does not add columns to existing tables. Inspect before adding;
+    // retries after a partial upgrade only execute the missing ALTER statements.
+    result = await runner(['d1', 'execute', d1Name, '--remote', '--command',
+        'PRAGMA table_info(blossom_upload_tokens)', '--json', '--config', configOutput, '--yes'], { echo: false });
+    if (result.code !== 0) {
+        throwStepFailure('上传凭证 schema 查询失败', 'Upload token schema inspection failed', result);
+    }
+    const inspection = parseJson(result.stdout, 'upload token table_info');
+    const rows = Array.isArray(inspection) ? inspection.flatMap(item => item.results || []) : [];
+    if (!rows.some(row => row.name === 'token_hash')) {
+        throw new DeployError('Upload token table inspection returned no schema; deployment stopped.');
+    }
+    for (const [column, type] of [['content_hash', 'TEXT'], ['max_bytes', 'INTEGER'], ['used_at', 'INTEGER']]) {
+        if (rows.some(row => row.name === column)) continue;
+        result = await runner(['d1', 'execute', d1Name, '--remote', '--command',
+            `ALTER TABLE blossom_upload_tokens ADD COLUMN ${column} ${type}`,
+            '--config', configOutput, '--yes']);
+        if (result.code !== 0) {
+            throwStepFailure('上传凭证 migration 失败', 'Upload token migration failed', result);
+        }
+    }
+
     log('部署 Worker / Deploying Worker...');
     result = await runner(['deploy', '--config', configOutput, '--keep-vars']);
     if (result.code !== 0) {
