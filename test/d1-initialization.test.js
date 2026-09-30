@@ -163,6 +163,8 @@ describe('D1 initialization diagnostics', () => {
         img_d1.exec(haiNeiAccessMigration);
         img_d1.exec(clientAwareAllowlistMigration);
         img_d1.exec(serviceUploadTokensMigration);
+        img_d1.exec(readFileSync(new URL("../database/migrations/v2.14.0_bound_upload_tokens.sql", import.meta.url), "utf8"));
+        img_d1.exec(readFileSync(new URL("../database/migrations/v2.15.0_blob_operations.sql", import.meta.url), "utf8"));
 
         const preserved = await img_d1.prepare(
             "SELECT value FROM files WHERE id = 'existing-file'"

@@ -12,6 +12,7 @@ import { existsSync, readFileSync, readdirSync, statSync, mkdirSync } from 'fs';
 import { join, resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { SqliteD1 } from './sqliteD1.js';
+import { applyMigrations } from './migrations.js';
 import { LocalR2Storage } from './r2Storage.js';
 import { dockerImageProcessor } from './imageProcessor.js';
 
@@ -87,28 +88,15 @@ const sqliteD1 = new SqliteD1(join(DATA_DIR, 'database.sqlite'));
 const initSqlPath = join(ROOT_DIR, 'database', 'init.sql');
 if (existsSync(initSqlPath)) {
     const initSql = readFileSync(initSqlPath, 'utf8');
-    try {
-        sqliteD1.exec(initSql);
-        console.log('Database initialized successfully');
-    } catch (e) {
-        console.log('Database init:', e.message);
-    }
+    sqliteD1.exec(initSql);
+    console.log('Database initialized successfully');
 }
 
-// 执行数据库迁移
 const migrationsDir = join(ROOT_DIR, 'database', 'migrations');
 if (existsSync(migrationsDir)) {
-    const migrations = readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-    for (const migration of migrations) {
-        try {
-            const sql = readFileSync(join(migrationsDir, migration), 'utf8');
-            sqliteD1.exec(sql);
-            console.log(`Migration ${migration}: OK`);
-        } catch (e) {
-            // 忽略已执行的迁移（如列已存在等）
-            console.log(`Migration ${migration}: ${e.message}`);
-        }
-    }
+    applyMigrations(sqliteD1.db, readdirSync(migrationsDir)
+        .filter(name => name.endsWith('.sql'))
+        .map(name => ({ name, sql: readFileSync(join(migrationsDir, name), 'utf8') })));
 }
 
 // ==================== 初始化 R2 存储 ====================

@@ -23,7 +23,7 @@ export function blossomHeaders(headers = {}) {
 
 export function errorResponse(error) {
     const status = error instanceof BlossomError ? error.status : 500;
-    const reason = error instanceof Error ? error.message : 'Internal Server Error';
+    const reason = error instanceof BlossomError ? error.message : 'Internal Server Error';
 
     if (!(error instanceof BlossomError)) {
         console.error('Blossom request failed:', error);

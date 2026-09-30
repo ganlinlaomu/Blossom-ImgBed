@@ -1,3 +1,4 @@
+import { acquireBlobLock, releaseBlobLock } from './blob-lock.js';
 import { authenticateBud11, isBlossomEnabled } from './auth.js';
 import { BlossomError, errorResponse, blossomHeaders } from './errors.js';
 import { assertSha256 } from './hash.js';
@@ -10,6 +11,8 @@ import { jsonResponse } from './errors.js';
 
 export function createDeleteHandler(dependencies = {}) {
     const deps = {
+        acquireBlobLock,
+        releaseBlobLock,
         authenticate: authenticateBud11,
         getBlob,
         hasOwnership,
@@ -24,6 +27,7 @@ export function createDeleteHandler(dependencies = {}) {
     };
 
     return async function handleDelete(context, sha256) {
+        let blobLock = null;
         try {
             if (!await deps.isEnabled(context.env)) {
                 return jsonResponse({ error: 'blossom_disabled' }, 403, { 'Cache-Control': 'no-store' });
@@ -35,6 +39,7 @@ export function createDeleteHandler(dependencies = {}) {
             if (!await deps.isPubkeyAllowed(context.env, pubkey)) {
                 return jsonResponse({ error: 'pubkey_not_allowed' }, 403, { 'Cache-Control': 'no-store' });
             }
+            blobLock = await deps.acquireBlobLock(context.env, sha256, 'delete');
             const blob = await deps.getBlob(context.env, sha256);
             if (!blob) throw new BlossomError(404, 'Blob not found');
             if (!await deps.hasOwnership(context.env, sha256, pubkey)) {
@@ -46,14 +51,23 @@ export function createDeleteHandler(dependencies = {}) {
                 return new Response(null, { status: 204, headers: blossomHeaders() });
             }
 
-            if (!await deps.deleteViaImgBed(context, blob)) {
+            try {
+                if (!await deps.deleteViaImgBed(context, blob)) {
+                    throw new BlossomError(502, 'ImgBed delete pipeline failed');
+                }
+            } catch (error) {
                 await deps.addOwnership(context.env, sha256, pubkey, Math.floor(Date.now() / 1000));
-                throw new BlossomError(502, 'ImgBed delete pipeline failed');
+                throw error;
             }
             await deps.deleteBlob(context.env, sha256);
             return new Response(null, { status: 204, headers: blossomHeaders() });
         } catch (error) {
             return errorResponse(error);
+        } finally {
+            if (blobLock) {
+                try { await deps.releaseBlobLock(context.env, blobLock); }
+                catch (error) { console.error('Failed to release Blossom operation lock:', error); }
+            }
         }
     };
 }

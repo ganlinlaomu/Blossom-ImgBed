@@ -126,6 +126,8 @@ describe('Blossom upload', () => {
         let storedBlob;
         let ownership;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: PUBKEY_A }),
             isPubkeyAllowed: async () => true,
             getBlob: async () => null,
@@ -154,6 +156,8 @@ describe('Blossom upload', () => {
         let authOptions;
         let pipelineCalls = 0;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: (_request, _env, options) => {
                 authOptions = options;
                 return { pubkey: PUBKEY_A, event: { tags: [['x', hash]] } };
@@ -185,6 +189,8 @@ describe('Blossom upload', () => {
         let pipelineCalls = 0;
         let allowlistChecks = 0;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => { bud11Calls++; return { pubkey: PUBKEY_A }; },
             authenticateUploadToken: async () => ({
                 authorized: true,
@@ -213,6 +219,8 @@ describe('Blossom upload', () => {
         const bytes = new TextEncoder().encode('post short-lived upload');
         const hash = await sha256Hex(bytes);
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticateUploadToken: async () => ({ authorized: true, pubkey: PUBKEY_B }),
             reserveUploadQuota: async () => {}, releaseUploadQuota: async () => {},
             getBlob: async () => null, putBlob: async () => {}, addOwnership: async () => {},
@@ -227,6 +235,8 @@ describe('Blossom upload', () => {
         const bytes = new TextEncoder().encode('body hash is not authorized');
         let pipelineCalls = 0;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: PUBKEY_A, event: { tags: [['x', 'c'.repeat(64)]] } }),
             isPubkeyAllowed: async () => true,
             uploadViaImgBed: async () => { pipelineCalls++; },
@@ -246,6 +256,8 @@ describe('Blossom upload', () => {
         const bytes = new TextEncoder().encode('wrong body');
         let pipelineCalls = 0;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: PUBKEY_A }),
             isPubkeyAllowed: async () => true,
             uploadViaImgBed: async () => { pipelineCalls++; },
@@ -263,6 +275,8 @@ describe('Blossom upload', () => {
         let pipelineCalls = 0;
         let addedOwner;
         const handler = createUploadHandler({
+            acquireUploadSlot: async () => "test", releaseUploadSlot: async () => {},
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => { authenticated = true; return { pubkey: PUBKEY_B }; },
             isPubkeyAllowed: async () => true,
             getBlob: async () => blob,
@@ -322,6 +336,7 @@ describe('Blossom DELETE', () => {
         let physicalDeletes = 0;
         let metadataDeletes = 0;
         const handler = createDeleteHandler({
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: PUBKEY_A }), getBlob: async () => blob,
             isPubkeyAllowed: async () => true,
             hasOwnership: async () => true, removeOwnership: async () => {}, countOwnerships: async () => 0,
@@ -337,6 +352,7 @@ describe('Blossom DELETE', () => {
     it('denies a non-owner', async () => {
         let physicalDeletes = 0;
         const handler = createDeleteHandler({
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: PUBKEY_B }), getBlob: async () => blob,
             isPubkeyAllowed: async () => true,
             hasOwnership: async () => false,
@@ -349,6 +365,7 @@ describe('Blossom DELETE', () => {
     it('keeps the physical blob when another owner remains', async () => {
         let physicalDeletes = 0;
         const handler = createDeleteHandler({
+            acquireBlobLock: async () => ({}), releaseBlobLock: async () => {},
             authenticate: () => ({ pubkey: PUBKEY_A }), getBlob: async () => blob,
             isPubkeyAllowed: async () => true,
             hasOwnership: async () => true, removeOwnership: async () => {}, countOwnerships: async () => 1,

@@ -43,6 +43,7 @@ describe('Cloudflare resource bootstrapper', () => {
                 return r2Info === 1 ? missingBucket() : ok(JSON.stringify({ name: 'blossom-imgbed-storage' }));
             }
             if (command === 'r2 bucket create') return ok();
+            if (args.includes('PRAGMA table_info(blossom_upload_tokens)')) return ok(JSON.stringify([{ results: ['token_hash', 'content_hash', 'max_bytes', 'used_at'].map(name => ({ name })) }]));
             if (args[0] === 'd1' && args[1] === 'execute') return ok();
             if (args[0] === 'deploy') return ok();
             throw new Error(`Unexpected command: ${args.join(' ')}`);
@@ -83,6 +84,7 @@ describe('Cloudflare resource bootstrapper', () => {
             if (args.slice(0, 3).join(' ') === 'r2 bucket info') {
                 return ok(JSON.stringify({ name: 'blossom-imgbed-storage' }));
             }
+            if (args.includes('PRAGMA table_info(blossom_upload_tokens)')) return ok(JSON.stringify([{ results: ['token_hash', 'content_hash', 'max_bytes', 'used_at'].map(name => ({ name })) }]));
             if (args[0] === 'd1' && args[1] === 'execute') return ok();
             if (args[0] === 'deploy') return ok();
             throw new Error(`Unexpected command: ${args.join(' ')}`);
@@ -101,6 +103,45 @@ describe('Cloudflare resource bootstrapper', () => {
         assert.equal(calls.some(args => args[1] === 'create'), false);
         assert.equal(calls.filter(args => args[0] === 'd1' && args[1] === 'list').length, 1);
         assert.ok(calls.findIndex(args => args[0] === 'deploy') > calls.findIndex(args => args[0] === 'd1' && args[1] === 'execute'));
+    });
+
+    it('repairs only missing token columns and makes repeated upgrades idempotent', async () => {
+        const columns = new Set(['token_hash', 'content_hash']);
+        const alterations = [];
+        const runner = async args => {
+            if (args[0] === 'd1' && args[1] === 'list') return ok(JSON.stringify([{ name: 'blossom-imgbed-db', uuid: DATABASE_ID }]));
+            if (args.slice(0, 3).join(' ') === 'r2 bucket info') return ok(JSON.stringify({ name: 'blossom-imgbed-storage' }));
+            if (args.includes('PRAGMA table_info(blossom_upload_tokens)')) return ok(JSON.stringify([{ results: [...columns].map(name => ({ name })) }]));
+            if (args.includes('--command')) {
+                const sql = args[args.indexOf('--command') + 1];
+                alterations.push(sql);
+                columns.add(sql.split(' ')[5]);
+            }
+            return ok();
+        };
+        const options = { template: structuredClone(template), generatedConfigPath: join(temporaryDirectory, 'wrangler.deploy.json'),
+            runner, build: async () => ok(), log: () => {}, env: {} };
+        await deployCloudflare(options); await deployCloudflare(options);
+        assert.deepEqual(alterations, [
+            'ALTER TABLE blossom_upload_tokens ADD COLUMN max_bytes INTEGER',
+            'ALTER TABLE blossom_upload_tokens ADD COLUMN used_at INTEGER',
+        ]);
+    });
+
+    it('stops before deployment when an upgrade ALTER fails', async () => {
+        let deployed = false;
+        const runner = async args => {
+            if (args[0] === 'd1' && args[1] === 'list') return ok(JSON.stringify([{ name: 'blossom-imgbed-db', uuid: DATABASE_ID }]));
+            if (args.slice(0, 3).join(' ') === 'r2 bucket info') return ok(JSON.stringify({ name: 'blossom-imgbed-storage' }));
+            if (args.includes('PRAGMA table_info(blossom_upload_tokens)')) return ok(JSON.stringify([{ results: [{ name: 'token_hash' }] }]));
+            if (args.includes('--command')) return { code: 1, stdout: '', stderr: 'database failure' };
+            if (args[0] === 'deploy') deployed = true;
+            return ok();
+        };
+        await assert.rejects(deployCloudflare({ template: structuredClone(template),
+            generatedConfigPath: join(temporaryDirectory, 'wrangler.deploy.json'), runner,
+            build: async () => ok(), log: () => {}, env: {} }), /migration failed/);
+        assert.equal(deployed, false);
     });
 
     it('stops with an authorization hint when D1 cannot be queried', async () => {
