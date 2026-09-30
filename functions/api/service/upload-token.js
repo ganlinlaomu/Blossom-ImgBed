@@ -19,7 +19,14 @@ export async function onRequestPost({ request, env }) {
         const validation = await validateApiToken(request, getDatabase(env), 'issue_upload_token');
         if (!validation.valid) {
             const status = validation.errorCode === 'missing_permission' ? 403 : 401;
-            return jsonResponse({ error: status === 403 ? 'forbidden' : 'unauthorized', message: validation.error }, status, CORS_HEADERS);
+            return jsonResponse(
+                {
+                    error: status === 403 ? 'forbidden' : 'unauthorized',
+                    message: validation.error,
+                },
+                status,
+                CORS_HEADERS,
+            );
         }
         if (validation.tokenData.type !== 'service') {
             throw new BlossomError(403, 'issue_upload_token requires a service API token');
@@ -33,6 +40,8 @@ export async function onRequestPost({ request, env }) {
         }
         const result = await issueUploadToken(env, {
             subject: body?.subject,
+            contentHash: body?.contentHash,
+            maxBytes: body?.maxBytes,
             ttl: body?.ttl,
             issuedBy: validation.tokenData.owner || null,
             parentTokenId: validation.tokenData.id,

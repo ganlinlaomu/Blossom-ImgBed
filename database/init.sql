@@ -121,7 +121,10 @@ CREATE TABLE IF NOT EXISTS blossom_upload_tokens (
     parent_token_id TEXT,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
-    revoked_at INTEGER
+    revoked_at INTEGER,
+    content_hash TEXT,
+    max_bytes INTEGER,
+    used_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS hainei_users (
