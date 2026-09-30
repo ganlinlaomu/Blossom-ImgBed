@@ -1,6 +1,6 @@
 # HaiNei upload compatibility and Blossom hardening
 
-These changes are committed locally for review. They have not been published or deployed. HaiNei draft PRs #277, #278 and #279 have been created; deploy the Blossom companion before the HaiNei Worker/client changes in #278.
+These changes are prepared on `fix/bound-upload-capabilities` for review and local Codex continuation. Publishing this branch does not deploy it. HaiNei PRs #277, #278 and #279 are merged; deploy this Blossom companion before publishing the HaiNei Worker/client changes from #278.
 
 ## Content-bound upload capabilities
 
