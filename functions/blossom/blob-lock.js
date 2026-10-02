@@ -21,7 +21,7 @@ export async function releaseBlobLock(env, lock) {
 export async function acquireUploadSlot(env) {
     if (!env?.img_d1?.prepare) throw new BlossomError(503, 'blossom_writes_require_d1');
     const configured = Number(env.BLOSSOM_MAX_CONCURRENT_UPLOADS);
-    const maximum = Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, 64) : 2;
+    const maximum = Number.isSafeInteger(configured) && configured > 0 ? Math.min(configured, 64) : 8;
     const owner = crypto.randomUUID();
     const result = await env.img_d1.prepare(`
         INSERT INTO blossom_upload_slots (owner, created_at)
