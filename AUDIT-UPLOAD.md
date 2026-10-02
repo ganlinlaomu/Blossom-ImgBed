@@ -24,9 +24,9 @@ Blossom mutations now require a D1 coordination binding (SQLite in Docker). KV-o
 
 A per-hash operation record excludes competing Blossom upload/delete requests until the active operation finishes. Conflicts return 409 `blob_operation_in_progress`. Uploads deduplicate under that lock, and a thrown/failed physical deletion restores the requesting owner's metadata. This coordination covers the Blossom endpoints, not independent administrator or external storage deletions.
 
-Body receivers also reserve a global D1 slot before buffering. The default `BLOSSOM_MAX_CONCURRENT_UPLOADS=2` bounds concurrent uploads across instances; saturation returns 429. The stream has a 15-second idle timeout, a 120-second total read deadline, actual-byte limits and abort cancellation. Bodies remain buffered for hashing and the existing storage pipeline; this is not streaming-to-storage. Measure memory before increasing file size or concurrency, especially in Workers.
+Body receivers also reserve a global D1 slot before buffering. The default `BLOSSOM_MAX_CONCURRENT_UPLOADS=8` bounds concurrent uploads across instances; saturation returns 429. The stream has a 15-second idle timeout, a 120-second total read deadline, actual-byte limits and abort cancellation. Bodies remain buffered for hashing and the existing storage pipeline; this is not streaming-to-storage. Measure memory before increasing file size or concurrency, especially in Workers.
 
-The service-token issuer reads at most 8 KiB of JSON, with a 5-second idle and 10-second total deadline. Atomic limits default to 120 requests/minute per issuer and 600 globally, configured by `BLOSSOM_TOKEN_ISSUES_PER_MINUTE` and `BLOSSOM_TOKEN_ISSUES_PER_MINUTE_GLOBAL`. Expired issuer-rate and upload-token rows are cleaned in bounded batches. Internal exception details and upstream upload response bodies are not returned to callers.
+The service-token issuer reads at most 8 KiB of JSON, with a 5-second idle and 10-second total deadline. Atomic limits default to 480 requests/minute per issuer and 2400 globally, configured by `BLOSSOM_TOKEN_ISSUES_PER_MINUTE` and `BLOSSOM_TOKEN_ISSUES_PER_MINUTE_GLOBAL`. Expired issuer-rate and upload-token rows are cleaned in bounded batches. Internal exception details and upstream upload response bodies are not returned to callers.
 
 ## Crash recovery and remaining limits
 

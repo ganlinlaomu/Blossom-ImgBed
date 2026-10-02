@@ -8,8 +8,8 @@ function limit(value, fallback) {
 export async function reserveTokenIssue(env, parentTokenId, now = Math.floor(Date.now() / 1000)) {
     if (!env?.img_d1?.prepare) throw new BlossomError(503, 'upload_tokens_require_d1');
     for (const [key, maximum] of [
-        [`issuer:${parentTokenId}`, limit(env.BLOSSOM_TOKEN_ISSUES_PER_MINUTE, 120)],
-        ['global', limit(env.BLOSSOM_TOKEN_ISSUES_PER_MINUTE_GLOBAL, 600)],
+        [`issuer:${parentTokenId}`, limit(env.BLOSSOM_TOKEN_ISSUES_PER_MINUTE, 480)],
+        ['global', limit(env.BLOSSOM_TOKEN_ISSUES_PER_MINUTE_GLOBAL, 2400)],
     ]) {
         const result = await env.img_d1.prepare(`
             INSERT INTO blossom_token_issue_limits (bucket, count, expires_at) VALUES (?, 1, ?)
