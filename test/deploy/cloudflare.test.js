@@ -12,17 +12,17 @@ describe('Cloudflare Workers Builds deployment', () => {
         assert.equal(config.main, 'deploy/worker/index.js');
         assert.equal(config.assets.directory, 'frontend-dist');
         assert.equal(config.d1_databases[0].binding, 'img_d1');
-        assert.equal(config.d1_databases[0].database_name, 'blossom-imgbed-db');
+        assert.equal(config.d1_databases[0].database_name, 'blossom-imgbed-db-apac');
         assert.equal(config.d1_databases[0].database_id, undefined);
         assert.equal(config.r2_buckets[0].binding, 'img_r2');
         assert.equal(config.r2_buckets[0].bucket_name, 'blossom-imgbed-storage');
         assert.equal(config.vars.BLOSSOM_ENABLED, undefined);
     });
 
-    it('runs the Worker next to its single-region D1 database', () => {
-        // Uploads and reads make several sequential D1 queries; far from the
-        // database each one is a long round trip unless the Worker moves.
-        assert.deepEqual(config.placement, { mode: 'smart' });
+    it('keeps the Worker at the edge next to its APAC D1 database', () => {
+        // HaiNei's users are in Japan and D1 now runs in APAC, so the Worker
+        // should stay on the colo nearest the user rather than be relocated.
+        assert.equal(config.placement, undefined);
     });
 
     it('initializes the complete D1 schema during one-click deployment', () => {

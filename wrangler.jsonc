@@ -4,7 +4,6 @@
   "main": "deploy/worker/index.js",
   "compatibility_date": "2026-09-15",
   "compatibility_flags": ["global_fetch_strictly_public"],
-  "placement": { "mode": "smart" },
   "assets": {
     "directory": "frontend-dist",
     "binding": "ASSETS",
@@ -28,7 +27,7 @@
   "d1_databases": [
     {
       "binding": "img_d1",
-      "database_name": "blossom-imgbed-db"
+      "database_name": "blossom-imgbed-db-apac"
     }
   ],
   "r2_buckets": [
