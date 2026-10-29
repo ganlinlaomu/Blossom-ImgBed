@@ -26,9 +26,13 @@ export async function acquireBlobLock(env, sha256, operation, now = Math.floor(D
     return { sha256, owner };
 }
 
+export function releaseBlobLockStatement(env, lock) {
+    return env.img_d1.prepare('DELETE FROM blossom_blob_operations WHERE sha256 = ? AND owner = ?')
+        .bind(lock.sha256, lock.owner);
+}
+
 export async function releaseBlobLock(env, lock) {
-    await env.img_d1.prepare('DELETE FROM blossom_blob_operations WHERE sha256 = ? AND owner = ?')
-        .bind(lock.sha256, lock.owner).run();
+    await releaseBlobLockStatement(env, lock).run();
 }
 
 // Bodies are buffered in memory, and memory belongs to one isolate (or one

@@ -149,17 +149,44 @@ D1Database.prototype.putSetting = function(key, value, category) {
         'INSERT OR REPLACE INTO settings (key, value, category) VALUES (?, ?, ?)'
     );
     
-    return stmt.bind(key, value, category).run();
+    var cache = settingCacheFor(this.db);
+    cache.delete(key);
+    return stmt.bind(key, value, category).run().finally(function() { cache.delete(key); });
 };
 
 /**
  * 获取设置 (替代 KV.get)
  */
+// Every upload reads the same few settings (security, upload, page, ...)
+// up to nine times, and each read is a D1 round trip to the database's
+// region. Keep them per isolate for a few seconds; writes through this
+// adapter clear them here at once, other isolates see changes within the TTL.
+var SETTING_CACHE_TTL_MS = 15000;
+var settingCaches = new WeakMap();
+
+function settingCacheFor(db) {
+    var cache = settingCaches.get(db);
+    if (!cache) {
+        cache = new Map();
+        settingCaches.set(db, cache);
+    }
+    return cache;
+}
+
 D1Database.prototype.getSetting = function(key) {
+    var cache = settingCacheFor(this.db);
+    var cached = cache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
     var stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');
-    return stmt.bind(key).first().then(function(result) {
+    var pending = stmt.bind(key).first().then(function(result) {
         return result ? result.value : null;
     });
+    var entry = { value: pending, expiresAt: Date.now() + SETTING_CACHE_TTL_MS };
+    cache.set(key, entry);
+    pending.catch(function() {
+        if (cache.get(key) === entry) cache.delete(key);
+    });
+    return pending;
 };
 
 /**
@@ -167,7 +194,9 @@ D1Database.prototype.getSetting = function(key) {
  */
 D1Database.prototype.deleteSetting = function(key) {
     var stmt = this.db.prepare('DELETE FROM settings WHERE key = ?');
-    return stmt.bind(key).run();
+    var cache = settingCacheFor(this.db);
+    cache.delete(key);
+    return stmt.bind(key).run().finally(function() { cache.delete(key); });
 };
 
 /**

@@ -10,7 +10,7 @@ function usesD1(env) {
     return !!(env?.img_d1 && typeof env.img_d1.prepare === 'function');
 }
 
-function rowToBlob(row) {
+export function rowToBlob(row) {
     return row ? {
         sha256: row.sha256,
         imgbedId: row.imgbed_id,
@@ -20,13 +20,14 @@ function rowToBlob(row) {
     } : null;
 }
 
+export function getBlobStatement(env, sha256) {
+    return env.img_d1.prepare(
+        'SELECT sha256, imgbed_id, size, mime_type, created_at FROM blossom_blobs WHERE sha256 = ?'
+    ).bind(sha256);
+}
+
 export async function getBlob(env, sha256) {
-    if (usesD1(env)) {
-        const row = await env.img_d1.prepare(
-            'SELECT sha256, imgbed_id, size, mime_type, created_at FROM blossom_blobs WHERE sha256 = ?'
-        ).bind(sha256).first();
-        return rowToBlob(row);
-    }
+    if (usesD1(env)) return rowToBlob(await getBlobStatement(env, sha256).first());
 
     const value = await getDatabase(env).get(blobKey(sha256));
     if (!value) return null;
@@ -40,16 +41,20 @@ export async function getBlob(env, sha256) {
     };
 }
 
+export function putBlobStatement(env, blob) {
+    return env.img_d1.prepare(
+        `INSERT INTO blossom_blobs (sha256, imgbed_id, size, mime_type, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(sha256) DO UPDATE SET
+           imgbed_id = excluded.imgbed_id,
+           size = excluded.size,
+           mime_type = excluded.mime_type`
+    ).bind(blob.sha256, blob.imgbedId, blob.size, blob.type, blob.uploaded);
+}
+
 export async function putBlob(env, blob) {
     if (usesD1(env)) {
-        await env.img_d1.prepare(
-            `INSERT INTO blossom_blobs (sha256, imgbed_id, size, mime_type, created_at)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(sha256) DO UPDATE SET
-               imgbed_id = excluded.imgbed_id,
-               size = excluded.size,
-               mime_type = excluded.mime_type`
-        ).bind(blob.sha256, blob.imgbedId, blob.size, blob.type, blob.uploaded).run();
+        await putBlobStatement(env, blob).run();
         return;
     }
 
@@ -82,11 +87,15 @@ export async function hasOwnership(env, sha256, pubkey) {
     return Array.isArray(owners) && owners.includes(pubkey);
 }
 
+export function addOwnershipStatement(env, sha256, pubkey, createdAt) {
+    return env.img_d1.prepare(
+        'INSERT OR IGNORE INTO blossom_ownership (sha256, pubkey, created_at) VALUES (?, ?, ?)'
+    ).bind(sha256, pubkey, createdAt);
+}
+
 export async function addOwnership(env, sha256, pubkey, createdAt) {
     if (usesD1(env)) {
-        await env.img_d1.prepare(
-            'INSERT OR IGNORE INTO blossom_ownership (sha256, pubkey, created_at) VALUES (?, ?, ?)'
-        ).bind(sha256, pubkey, createdAt).run();
+        await addOwnershipStatement(env, sha256, pubkey, createdAt).run();
         return;
     }
     const db = getDatabase(env);

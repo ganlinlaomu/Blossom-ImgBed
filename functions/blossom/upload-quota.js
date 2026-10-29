@@ -36,11 +36,18 @@ export async function assertUploadQuota(env, pubkey, size) {
         throw new BlossomError(429, 'daily_upload_bytes_exceeded');
 }
 
-export async function reserveUploadQuota(env, pubkey, size) {
-    await assertUploadQuota(env, pubkey, size);
+/**
+ * The conditional upsert enforces both daily limits, so no read is needed
+ * first. Returns the statement and the UTC date it charges.
+ */
+export function reserveUploadQuotaStatement(env, pubkey, size) {
+    if (!env?.img_d1?.prepare) throw new BlossomError(503, 'upload_tokens_require_d1');
     const policy = uploadQuotaPolicy(env);
+    if (!Number.isSafeInteger(size) || size <= 0) throw new BlossomError(400, 'invalid_file_size');
+    if (size > policy.maxFileSize) throw new BlossomError(413, 'file_too_large');
+    if (size > policy.dailyBytes) throw new BlossomError(429, 'daily_upload_bytes_exceeded');
     const reservedDate = usageDate();
-    const result = await env.img_d1
+    const statement = env.img_d1
         .prepare(
             `
         INSERT INTO hainei_media_usage (pubkey, usage_date, upload_count, upload_bytes)
@@ -51,8 +58,13 @@ export async function reserveUploadQuota(env, pubkey, size) {
         WHERE upload_count < ? AND upload_bytes + excluded.upload_bytes <= ?
     `,
         )
-        .bind(pubkey, reservedDate, size, policy.dailyCount, policy.dailyBytes)
-        .run();
+        .bind(pubkey, reservedDate, size, policy.dailyCount, policy.dailyBytes);
+    return { statement, reservedDate };
+}
+
+export async function reserveUploadQuota(env, pubkey, size) {
+    const { statement, reservedDate } = reserveUploadQuotaStatement(env, pubkey, size);
+    const result = await statement.run();
     if (Number(result?.meta?.changes || 0) !== 1) throw new BlossomError(429, 'daily_upload_quota_exceeded');
     return reservedDate;
 }

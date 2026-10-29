@@ -28,6 +28,21 @@ export class SqliteD1 {
         const db = this.db;
         return new SqliteD1Statement(db, sql);
     }
+
+    /**
+     * 模拟 D1 的 batch 方法：在一个事务中按顺序执行，任一失败则全部回滚
+     */
+    async batch(statements) {
+        const run = this.db.transaction(() => statements.map(statement => {
+            const stmt = this.db.prepare(statement._sql);
+            if (stmt.reader) {
+                return { results: stmt.all(...statement._params), success: true, meta: { changes: 0 } };
+            }
+            const result = stmt.run(...statement._params);
+            return { results: [], success: true, meta: { changes: result.changes, last_row_id: result.lastInsertRowid } };
+        }));
+        return run();
+    }
 }
 
 class SqliteD1Statement {

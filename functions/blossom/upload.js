@@ -1,12 +1,17 @@
-import { acquireBlobLock, releaseBlobLock, acquireUploadSlot, releaseUploadSlot } from './blob-lock.js';
+import { acquireBlobLock, releaseBlobLock, releaseBlobLockStatement, acquireUploadSlot, releaseUploadSlot } from './blob-lock.js';
+import { changed, d1Batch } from './d1.js';
 import { authenticateBud11, isBlossomEnabled } from './auth.js';
 import { BlossomError, blossomHeaders, errorResponse, jsonResponse } from './errors.js';
 import { assertSha256, readAndHashRequest } from './hash.js';
-import { addOwnership, deleteBlob, getBlob, putBlob } from './metadata.js';
+import {
+    addOwnership, addOwnershipStatement, deleteBlob, getBlob, getBlobStatement, putBlob, putBlobStatement, rowToBlob,
+} from './metadata.js';
 import { getImgBedRecord, uploadViaImgBed } from './imgbed.js';
 import { isPubkeyAllowed } from './allowlist.js';
-import { authenticateUploadToken, consumeBoundUploadToken } from './upload-token.js';
-import { uploadQuotaPolicy, assertUploadQuota, releaseUploadQuota, reserveUploadQuota } from './upload-quota.js';
+import { authenticateUploadToken, consumeBoundUploadToken, consumeBoundUploadTokenStatement } from './upload-token.js';
+import {
+    uploadQuotaPolicy, assertUploadQuota, releaseUploadQuota, reserveUploadQuota, reserveUploadQuotaStatement,
+} from './upload-quota.js';
 
 const MIME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*;.*)?$/;
 
@@ -123,6 +128,38 @@ export function blobDescriptor(request, blob) {
     };
 }
 
+// D1 sits in one region, so every statement is a long round trip for most
+// users. With batch support, consume the token, charge the quota and look up
+// the blob in one trip, and record the blob, its owner and the lock release
+// in another. Without it (test doubles) the step-by-step dependencies run.
+function canBatch(env) {
+    return typeof env?.img_d1?.batch === 'function';
+}
+
+async function admitBatched(env, tokenAuth, pubkey, body) {
+    const statements = [];
+    let tokenStatement = null;
+    let quota = null;
+    if (tokenAuth.authorized) {
+        tokenStatement = await consumeBoundUploadTokenStatement(env, tokenAuth, body.sha256, body.size);
+        quota = reserveUploadQuotaStatement(env, pubkey, body.size);
+        if (tokenStatement) statements.push(tokenStatement);
+        statements.push(quota.statement);
+    }
+    statements.push(getBlobStatement(env, body.sha256));
+    const results = await d1Batch(env.img_d1, statements);
+    const blob = rowToBlob(results.at(-1)?.results?.[0]);
+    if (!quota) return { blob, usageDate: null };
+    const tokenConsumed = !tokenStatement || changed(results[0]);
+    const quotaCharged = changed(results[tokenStatement ? 1 : 0]);
+    if (!tokenConsumed) {
+        if (quotaCharged) await releaseUploadQuota(env, pubkey, body.size, quota.reservedDate);
+        throw new BlossomError(401, 'upload_token_already_used');
+    }
+    if (!quotaCharged) throw new BlossomError(429, 'daily_upload_quota_exceeded');
+    return { blob, usageDate: quota.reservedDate };
+}
+
 export function createUploadHandler(dependencies = {}) {
     const deps = {
         acquireUploadSlot,
@@ -199,15 +236,31 @@ export function createUploadHandler(dependencies = {}) {
                 throw new BlossomError(400, 'Content-Length does not match the uploaded blob');
             }
             blobLock = await deps.acquireBlobLock(context.env, body.sha256, 'upload');
-            if (uploadTokenAuth.authorized) {
-                await deps.consumeBoundUploadToken(context.env, uploadTokenAuth, body.sha256, body.size);
-                const usageDate = await deps.reserveUploadQuota(context.env, pubkey, body.size);
-                quotaReservation = { pubkey, size: body.size, usageDate };
+            const batched = canBatch(context.env);
+            let blob;
+            if (batched) {
+                const admitted = await admitBatched(context.env, uploadTokenAuth, pubkey, body);
+                blob = admitted.blob;
+                if (admitted.usageDate) quotaReservation = { pubkey, size: body.size, usageDate: admitted.usageDate };
+            } else {
+                if (uploadTokenAuth.authorized) {
+                    await deps.consumeBoundUploadToken(context.env, uploadTokenAuth, body.sha256, body.size);
+                    const usageDate = await deps.reserveUploadQuota(context.env, pubkey, body.size);
+                    quotaReservation = { pubkey, size: body.size, usageDate };
+                }
+                blob = await deps.getBlob(context.env, body.sha256);
             }
-
-            let blob = await deps.getBlob(context.env, body.sha256);
             if (blob && (await deps.getImgBedRecord(context.env, blob.imgbedId))) {
-                await deps.addOwnership(context.env, blob.sha256, pubkey, Math.floor(Date.now() / 1000));
+                const now = Math.floor(Date.now() / 1000);
+                if (batched) {
+                    await d1Batch(context.env.img_d1, [
+                        addOwnershipStatement(context.env, blob.sha256, pubkey, now),
+                        releaseBlobLockStatement(context.env, blobLock),
+                    ]);
+                    blobLock = null;
+                } else {
+                    await deps.addOwnership(context.env, blob.sha256, pubkey, now);
+                }
                 return jsonResponse(blobDescriptor(context.request, blob), 200);
             }
             if (blob) await deps.deleteBlob(context.env, blob.sha256);
@@ -221,8 +274,17 @@ export function createUploadHandler(dependencies = {}) {
                 type,
                 uploaded: Math.floor(Date.now() / 1000),
             };
-            await deps.putBlob(context.env, blob);
-            await deps.addOwnership(context.env, blob.sha256, pubkey, blob.uploaded);
+            if (batched) {
+                await d1Batch(context.env.img_d1, [
+                    putBlobStatement(context.env, blob),
+                    addOwnershipStatement(context.env, blob.sha256, pubkey, blob.uploaded),
+                    releaseBlobLockStatement(context.env, blobLock),
+                ]);
+                blobLock = null;
+            } else {
+                await deps.putBlob(context.env, blob);
+                await deps.addOwnership(context.env, blob.sha256, pubkey, blob.uploaded);
+            }
             return jsonResponse(blobDescriptor(context.request, blob), 201);
         } catch (error) {
             if (quotaReservation) {
