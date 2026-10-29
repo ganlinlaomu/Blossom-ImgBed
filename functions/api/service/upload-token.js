@@ -16,7 +16,7 @@ export async function onRequestOptions() {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
     try {
         const validation = await validateApiToken(request, getDatabase(env), 'issue_upload_token');
         if (!validation.valid) {
@@ -34,7 +34,7 @@ export async function onRequestPost({ request, env }) {
             throw new BlossomError(403, 'issue_upload_token requires a service API token');
         }
 
-        await reserveTokenIssue(env, validation.tokenData.id);
+        await reserveTokenIssue(env, validation.tokenData.id, undefined, waitUntil);
         let body;
         try {
             body = JSON.parse(new TextDecoder().decode(await readRequestBytes(request, 8192, { timeoutMs: 10000, idleTimeoutMs: 5000 })));

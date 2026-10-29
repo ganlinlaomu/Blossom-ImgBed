@@ -113,6 +113,40 @@ describe('audit hardening regressions', () => {
         const b = await acquireUploadSlot(e, 40);
         await releaseUploadSlot(e, a); await releaseUploadSlot(e, b);
     });
+    it('serves cached settings until a local write replaces them', async () => {
+        const e = env();
+        try {
+            const db = getDatabase(e);
+            await db.put('manage@sysConfig@page', 'one');
+            assert.equal(await db.get('manage@sysConfig@page'), 'one');
+            e.img_d1.db.prepare("UPDATE settings SET value = 'remote' WHERE key = 'manage@sysConfig@page'").run();
+            assert.equal(await getDatabase(e).get('manage@sysConfig@page'), 'one');
+            await db.put('manage@sysConfig@page', 'two');
+            assert.equal(await getDatabase(e).get('manage@sysConfig@page'), 'two');
+            await db.delete('manage@sysConfig@page');
+            assert.equal(await getDatabase(e).get('manage@sysConfig@page'), null);
+        } finally { e.img_d1.db.close(); }
+    });
+    it('records blob, owner and lock release together and consumes the token once', async () => {
+        const e = env();
+        const body = new Uint8Array([1, 2, 3]);
+        const bodyHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', body)), b => b.toString(16).padStart(2, '0')).join('');
+        try {
+            const issued = await issueUploadToken(e, { subject, contentHash: bodyHash, maxBytes: 3 });
+            const upload = createUploadHandler({ isEnabled: async () => true,
+                readAndHash: async () => ({ sha256: bodyHash, size: 3, buffer: body.buffer }),
+                uploadViaImgBed: async () => 'stored' });
+            const ctx = () => ({ env: e, request: new Request('https://x/upload', { method: 'PUT',
+                headers: { Authorization: `Bearer ${issued.token}`, 'X-SHA-256': bodyHash }, body }) });
+            assert.equal((await upload(ctx(), () => {})).status, 201);
+            assert.equal(await hasOwnership(e, bodyHash, subject), true);
+            const usage = () => e.img_d1.db.prepare('SELECT upload_count AS n FROM hainei_media_usage').get().n;
+            assert.equal(usage(), 1);
+            assert.equal(e.img_d1.db.prepare('SELECT count(*) AS n FROM blossom_blob_operations').get().n, 0);
+            const auth = await authenticateUploadToken(req(issued.token), e).catch(error => error);
+            assert.match(String(auth.message), /already_used/);
+        } finally { e.img_d1.db.close(); }
+    });
     it('denies KV-only mutations rather than claiming a distributed lock exists', async () => {
         await assert.rejects(acquireBlobLock({}, hash, 'upload'), /writes_require_d1/);
     });

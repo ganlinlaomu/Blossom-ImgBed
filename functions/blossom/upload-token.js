@@ -168,18 +168,28 @@ export async function authenticateUploadToken(request, env, now = Math.floor(Dat
     };
 }
 
-export async function consumeBoundUploadToken(env, authorization, sha256, size) {
+/**
+ * Checks the issuer and the content binding, then returns the statement that
+ * consumes the token once, or null for a legacy unbound token. The token is
+ * consumed only if the statement changes exactly one row.
+ */
+export async function consumeBoundUploadTokenStatement(env, authorization, sha256, size) {
     await assertUploadTokenParent(env, authorization.parentTokenId);
-    if (!authorization.contentHash) return; // Legacy callers still have actual-byte quota enforcement.
+    if (!authorization.contentHash) return null; // Legacy callers still have actual-byte quota enforcement.
     if (sha256 !== authorization.contentHash || size > authorization.maxBytes)
         throw new BlossomError(409, 'upload_binding_mismatch');
     const now = Math.floor(Date.now() / 1000);
-    const result = await requireD1(env)
+    return requireD1(env)
         .prepare(
             `UPDATE blossom_upload_tokens SET used_at=?
       WHERE token_hash=? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?`,
         )
-        .bind(now, authorization.tokenHash, now)
-        .run();
+        .bind(now, authorization.tokenHash, now);
+}
+
+export async function consumeBoundUploadToken(env, authorization, sha256, size) {
+    const statement = await consumeBoundUploadTokenStatement(env, authorization, sha256, size);
+    if (!statement) return;
+    const result = await statement.run();
     if (Number(result?.meta?.changes || 0) !== 1) throw new BlossomError(401, 'upload_token_already_used');
 }
