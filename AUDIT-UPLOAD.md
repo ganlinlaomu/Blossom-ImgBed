@@ -24,13 +24,13 @@ Blossom mutations now require a D1 coordination binding (SQLite in Docker). KV-o
 
 A per-hash operation record excludes competing Blossom upload/delete requests until the active operation finishes. Conflicts return 409 `blob_operation_in_progress`. Uploads deduplicate under that lock, and a thrown/failed physical deletion restores the requesting owner's metadata. This coordination covers the Blossom endpoints, not independent administrator or external storage deletions.
 
-Body receivers also reserve a global D1 slot before buffering. The default `BLOSSOM_MAX_CONCURRENT_UPLOADS=8` bounds concurrent uploads across instances; saturation returns 429. The stream has a 15-second idle timeout, a 120-second total read deadline, actual-byte limits and abort cancellation. Bodies remain buffered for hashing and the existing storage pipeline; this is not streaming-to-storage. Measure memory before increasing file size or concurrency, especially in Workers.
+Body receivers reserve an in-memory slot before buffering. Buffered bodies live in one isolate (or one Docker process), so the bound is per instance: `BLOSSOM_MAX_CONCURRENT_UPLOADS` (default 8, 16 in `wrangler.jsonc`) uploads and `BLOSSOM_MAX_INFLIGHT_UPLOAD_BYTES` (default 64 MiB) of declared body size, with one upload always admitted; saturation returns 429. An earlier global D1 slot table (`blossom_upload_slots`, now unused) held a slot while slow clients sent their body and leaked it whenever a Worker was killed before its release ran, until every upload returned 429. The stream has a 15-second idle timeout, a 120-second total read deadline, actual-byte limits and abort cancellation. Bodies remain buffered for hashing and the existing storage pipeline; this is not streaming-to-storage. Measure memory before increasing file size or concurrency, especially in Workers.
 
 The service-token issuer reads at most 8 KiB of JSON, with a 5-second idle and 10-second total deadline. Atomic limits default to 480 requests/minute per issuer and 2400 globally, configured by `BLOSSOM_TOKEN_ISSUES_PER_MINUTE` and `BLOSSOM_TOKEN_ISSUES_PER_MINUTE_GLOBAL`. Expired issuer-rate and upload-token rows are cleaned in bounded batches. Internal exception details and upstream upload response bodies are not returned to callers.
 
 ## Crash recovery and remaining limits
 
-Operation locks and upload slots do not expire automatically. An old physical DELETE must never resume after a replacement lock is granted. A process crash can therefore leave a hash blocked or a concurrency slot occupied, prioritizing storage consistency over availability.
+Delete locks do not expire automatically: an old physical DELETE must never resume after a replacement lock is granted, so a crash during delete can leave a hash blocked, prioritizing storage consistency over availability. Upload locks are leases (`BLOSSOM_UPLOAD_LOCK_LEASE_SECONDS`, default 300): any later operation may take over an upload lock older than that. The stale upload writes the same content-addressed bytes, and releases only delete rows their owner still holds. Upload slots are in memory and disappear with their process.
 
 Recovery procedure:
 

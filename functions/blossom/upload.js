@@ -183,8 +183,8 @@ export function createUploadHandler(dependencies = {}) {
             const declaredLength = parseLength(context.request.headers.get('Content-Length'), 'Content-Length');
 
             const type = normalizeMimeType(context.request.headers.get('Content-Type'));
-            uploadSlot = await deps.acquireUploadSlot(context.env);
             const maximum = uploadTokenAuth.maxBytes || uploadQuotaPolicy(context.env).maxFileSize;
+            uploadSlot = await deps.acquireUploadSlot(context.env, Math.min(declaredLength ?? maximum, maximum));
             const body = await deps.readAndHash(context.request, maximum);
             if (authorizedHash && body.sha256 !== authorizedHash) {
                 throw new BlossomError(409, 'X-SHA-256 and BUD-11 hash do not match the uploaded blob');

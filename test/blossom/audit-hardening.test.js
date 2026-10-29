@@ -90,6 +90,29 @@ describe('audit hardening regressions', () => {
             await releaseBlobLock(e, await acquireBlobLock(e, hash, 'delete'));
         } finally { e.img_d1.db.close(); }
     });
+    it('lets a stale upload lock be taken over but never a delete lock', async () => {
+        const e = env();
+        try {
+            const stale = await acquireBlobLock(e, hash, 'upload', 1000);
+            await assert.rejects(acquireBlobLock(e, hash, 'upload', 1299), /operation_in_progress/);
+            const fresh = await acquireBlobLock(e, hash, 'upload', 1300);
+            await releaseBlobLock(e, stale);
+            await assert.rejects(acquireBlobLock(e, hash, 'delete', 1301), /operation_in_progress/);
+            await releaseBlobLock(e, fresh);
+            await acquireBlobLock(e, hash, 'delete', 2000);
+            await assert.rejects(acquireBlobLock(e, hash, 'upload', 999999), /operation_in_progress/);
+        } finally { e.img_d1.db.close(); }
+    });
+    it('bounds in-flight upload bytes per instance but always admits one upload', async () => {
+        const e = { BLOSSOM_MAX_INFLIGHT_UPLOAD_BYTES: '100' };
+        const big = await acquireUploadSlot(e, 500);
+        await assert.rejects(acquireUploadSlot(e, 1), /concurrency_limit/);
+        await releaseUploadSlot(e, big);
+        const a = await acquireUploadSlot(e, 60);
+        await assert.rejects(acquireUploadSlot(e, 60), /concurrency_limit/);
+        const b = await acquireUploadSlot(e, 40);
+        await releaseUploadSlot(e, a); await releaseUploadSlot(e, b);
+    });
     it('denies KV-only mutations rather than claiming a distributed lock exists', async () => {
         await assert.rejects(acquireBlobLock({}, hash, 'upload'), /writes_require_d1/);
     });
