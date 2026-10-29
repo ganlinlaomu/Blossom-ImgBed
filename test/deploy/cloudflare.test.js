@@ -19,6 +19,12 @@ describe('Cloudflare Workers Builds deployment', () => {
         assert.equal(config.vars.BLOSSOM_ENABLED, undefined);
     });
 
+    it('runs the Worker next to its single-region D1 database', () => {
+        // Uploads and reads make several sequential D1 queries; far from the
+        // database each one is a long round trip unless the Worker moves.
+        assert.deepEqual(config.placement, { mode: 'smart' });
+    });
+
     it('initializes the complete D1 schema during one-click deployment', () => {
         assert.equal(packageJson.scripts.deploy, 'npm run deploy:cloudflare');
         assert.equal(packageJson.scripts['deploy:cloudflare'], 'node scripts/deploy-cloudflare.mjs');
