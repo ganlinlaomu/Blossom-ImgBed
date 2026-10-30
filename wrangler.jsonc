@@ -33,7 +33,7 @@
   "r2_buckets": [
     {
       "binding": "img_r2",
-      "bucket_name": "blossom-imgbed-storage"
+      "bucket_name": "blossom-imgbed-storage-apac"
     }
   ]
 }
