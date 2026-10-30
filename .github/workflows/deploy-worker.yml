@@ -21,7 +21,7 @@ on:
 #
 # 可选：
 #   D1_DATABASE_NAME      - D1 名称（默认 blossom-imgbed-db-apac）
-#   R2_BUCKET_NAME        - R2 名称（默认 blossom-imgbed-storage）
+#   R2_BUCKET_NAME        - R2 名称（默认 blossom-imgbed-storage-apac）
 #   WORKER_NAME           - Worker 名称（默认 blossom-imgbed，手动触发时可在界面覆盖）
 
 jobs:

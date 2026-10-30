@@ -15,7 +15,7 @@ describe('Cloudflare Workers Builds deployment', () => {
         assert.equal(config.d1_databases[0].database_name, 'blossom-imgbed-db-apac');
         assert.equal(config.d1_databases[0].database_id, undefined);
         assert.equal(config.r2_buckets[0].binding, 'img_r2');
-        assert.equal(config.r2_buckets[0].bucket_name, 'blossom-imgbed-storage');
+        assert.equal(config.r2_buckets[0].bucket_name, 'blossom-imgbed-storage-apac');
         assert.equal(config.vars.BLOSSOM_ENABLED, undefined);
     });
 
